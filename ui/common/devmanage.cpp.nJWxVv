@@ -1,0 +1,458 @@
+#include "devmanage.h"
+#include "comservices.h"
+#include "qdebug.h"
+#include "log.h"
+#include <QBitArray>
+#include <QTimer>
+DevManage *DevManage::m_devManage = nullptr;
+
+DevManage::DevManage(QObject *parent)
+    : QObject{parent}
+{
+    m_device = new ComServices;
+    m_device->setDataPacketFormat(m_header,m_tailer,m_length);
+    comThread = new QThread;
+    m_device->moveToThread(comThread);
+    comThread->start();
+    qRegisterMetaType<Mode>("Mode");
+    connect(m_device,SIGNAL(updateData(QByteArray,Mode)),this,SLOT(onReceiveData(QByteArray,Mode)));
+    connect(m_device,SIGNAL(connectLost()),this,SIGNAL(connectLost()));
+    connect(m_device,SIGNAL(reconnect()),this,SIGNAL(reconnect()));
+    connect(m_device,SIGNAL(connectLost()),this,SLOT(changeDevState()));
+    connect(m_device,SIGNAL(reconnect()),this,SLOT(changeDevState()));
+
+}
+
+int DevManage::getCavityNum() const
+{
+    return m_cavityNum;
+}
+
+void DevManage::setCavityNum(int cavityNum)
+{
+    m_cavityNum = cavityNum;
+}
+
+DevState DevManage::getState() const
+{
+    return m_state;
+}
+
+void DevManage::setState(const DevState &state)
+{
+    if(m_state!=state)
+    {
+        m_state = state;
+        emit stateChange(m_state);
+    }
+}
+
+DevManage *DevManage::getInstance(QObject *parent)
+{
+    if(m_devManage == nullptr)
+    {
+        DevManage::m_devManage = new DevManage(parent);
+    }
+    return  DevManage::m_devManage;
+}
+
+bool DevManage::isOpen()
+{
+    return m_device->isOpen();
+}
+
+void DevManage::close()
+{
+    return m_device->close();
+}
+
+void DevManage::setSerialPort(QString newSerialPort, int newBaudrate)
+{
+    static_cast<ComServices*>(m_device)->setProperty(newSerialPort,newBaudrate);
+}
+
+bool DevManage::open()
+{
+    bool ok =  m_device->open();
+    if(ok)
+        setState(connected);
+    else
+        setState(unconnect);
+    return ok;
+}
+
+bool DevManage::readData(Instruct instruct, Cavity cavity)
+{
+    QByteArray cmd;
+    cmd.resize(m_length);
+    QByteArray lengthArr = ConvertIntToIEE754((unsigned int)(m_length-m_header.length()-m_tailer.length()),1);
+    QByteArray instructArr = ConvertIntToIEE754((unsigned int)(instruct),2);
+    QByteArray address = ConvertIntToIEE754((unsigned int)(Mode::read),1) +ConvertIntToIEE754((unsigned int)(cavity),1);
+    //    qDebug()<<Q_FUNC_INFO<<__LINE__<<" instructArr:"<<instructArr.toHex()<<  "ConvertIntToIEE754((unsigned int)(Mode::write),1):"
+    //         <<ConvertIntToIEE754((unsigned int)(Mode::write),1).toHex()<<"  cavity:"<<ConvertIntToIEE754((unsigned int)(cavity),1).toHex();
+    QByteArray valueArr("\x00\x00\x00\x00",4);
+//    qDebug()<<Q_FUNC_INFO<<__LINE__<<"valueArr:"<<valueArr;
+    //    qDebug()<<Q_FUNC_INFO<<__LINE__<<" ModbusCRC16:"<<QByteArray(lengthArr+instructArr+address+valueArr).toHex();
+    QByteArray checkArr = ModbusCRC16(QByteArray(lengthArr+instructArr+address+valueArr));
+
+    cmd = m_header +lengthArr+instructArr+address+valueArr+checkArr+m_tailer;
+    qDebug()<<Q_FUNC_INFO<<__LINE__<<"cmd:"<<cmd.toHex();
+    bool result =  m_device->SendData(cmd);
+    return result;
+}
+
+bool DevManage::writeData(Instruct instruct, Cavity cavity, QVariant value)
+{
+    QByteArray cmd;
+    cmd.resize(m_length);
+    QByteArray lengthArr = ConvertIntToIEE754((unsigned int)(m_length-m_header.length()-m_tailer.length()),1);
+    QByteArray instructArr = ConvertIntToIEE754((unsigned int)(instruct),2);
+    QByteArray address = ConvertIntToIEE754((unsigned int)(Mode::write),1) +ConvertIntToIEE754((unsigned int)(cavity),1);
+    //    qDebug()<<Q_FUNC_INFO<<__LINE__<<" instructArr:"<<instructArr.toHex()<<  "ConvertIntToIEE754((unsigned int)(Mode::write),1):"
+    //           <<ConvertIntToIEE754((unsigned int)(Mode::write),1).toHex()<<"  cavity:"<<ConvertIntToIEE754((unsigned int)(cavity),1).toHex();
+    QByteArray valueArr;
+    valueArr.resize(4);
+    DataType type = getDataType(instruct);
+    switch (type)
+    {
+    case floatType:
+        valueArr = IEEE754FloatToHexStr(value.toFloat());
+        break;
+    case unsignedIntType:
+        valueArr = ConvertIntToIEE754(value.toInt(),4);
+        break;
+
+    case customType:
+        valueArr = value.toByteArray();
+        break;
+    default:
+        return false;
+        break;
+    };
+    QByteArray checkArr = ModbusCRC16(QByteArray(lengthArr+instructArr+address+valueArr));
+    cmd = m_header +lengthArr+instructArr+address+valueArr+checkArr+m_tailer;
+
+    bool ok =   m_device->SendData(cmd);
+    return ok;
+}
+
+void DevManage::onReceiveData(QByteArray receiveData, Mode mode)
+{
+
+    Instruct instruct = getCmdInstruct(receiveData);
+    Cavity cavity = getCavity(receiveData);
+    QVariant result = getResult(instruct,receiveData);
+
+    bool isReal = true;
+    if(instruct!= temperature&&instruct!=upPressure&&instruct!=downPressure)
+    {
+        isReal = false;
+    }
+    QString modeStr;
+    switch (mode) {
+    case Mode::read:
+        modeStr = "read";
+        break;
+    case Mode::write:
+        modeStr = "write";
+        break;
+    case Mode::writeError:
+        modeStr = "writeError";
+        break;
+    default:
+        break;
+    }
+    if(mode==Mode::read){
+        CLOG_INFO(receiveData.toHex());
+        emit valueChange(instruct,cavity,result);
+        emit recordChange(modeStr,receiveData.toHex(),result,isReal);
+        if(instruct==Instruct::gateDebug)
+        {
+            emit tapChange(result.value<QList<int>>());
+        }
+         if(instruct==Instruct::temperatureDebug
+                ||instruct == Instruct::placingSamplesControl
+                ||instruct == Instruct::pneumaticFixtureState
+                ||instruct == Instruct::sampleDrawerControl
+                ||instruct == Instruct::sampleDrawerState)
+        {
+            emit operationChange(instruct,cavity,result.toInt());
+        }
+    }
+    else
+    {
+        emit recordChange(modeStr,receiveData.toHex(),result,false);
+    }
+
+}
+
+Instruct DevManage::getCmdInstruct(const QByteArray &data)
+{
+    QByteArray cmdInstruct = data.mid(3,2);
+    Instruct instruct = Instruct(IEEE754HexStrToInt(cmdInstruct));
+
+    return instruct;
+}
+
+Cavity DevManage::getCavity(const QByteArray &data)
+{
+    QByteArray cavityInstruct = data.mid(6,1);
+    Cavity cavity = Cavity(IEEE754HexStrToInt(cavityInstruct));
+    return cavity;
+}
+
+QByteArray DevManage::getData(const QByteArray &data)
+{
+    QByteArray result = data.mid(7,4);
+//    qDebug()<<Q_FUNC_INFO<<__LINE__<<" result:"<<result<<"  data:"<<data;
+    return result;
+}
+DataType DevManage::getDataType(Instruct instruct)
+{
+    switch (Instruct(instruct))
+    {
+    case temperatureSetup:
+    case kpSetup:
+    case TiSetup:
+    case TdSetup:
+    case signalPressure:
+    case beginPressureSetup:
+    case temperature:
+    case upPressure:
+    case downPressure:
+    case downPressureCoefficient:
+        //        qDebug()<<Q_FUNC_INFO<<__LINE__<<"float value:"<<value.toFloat();
+        return DataType::floatType;
+        break;
+    case temperatureControl:
+    case temperatureDebug:
+    case pressureControlCycle:
+    case pressureCheckCycle:
+    case dataAutoTranslate:
+    case placingSamplesControl:
+    case pneumaticFixtureControl:
+    case pneumaticFixtureState:
+    case sampleDrawerControl:
+    case sampleDrawerState:
+    case circulateLiquidLevelStatus:
+    case temperatureSelftuningControl:
+    case restoreFactorySettings:
+    case deviceID:
+    case remoteUpgrade:
+        //        qDebug()<<Q_FUNC_INFO<<__LINE__<<"int value:"<<value.toInt();
+        return DataType::unsignedIntType;
+        break;
+
+    case flowControl:
+    case gateDebug:
+    case pressureMaintainSetup:
+    case gateSetupForPressure:
+        return DataType::customType;
+        //        qDebug()<<Q_FUNC_INFO<<__LINE__<<"custom value:"<<value.toInt();
+        break;
+    default:
+        return DataType::customType;
+
+        break;
+    };
+}
+
+QVariant DevManage::getResult(Instruct instruct, QByteArray result)
+{
+    DataType dataType = getDataType(instruct);
+    QByteArray lastResult = getData(result);
+    if(dataType==floatType)
+    {
+        return IEEE754HexStrToFloat(lastResult);
+    }
+    else if(dataType==unsignedIntType)
+    {
+        return IEEE754HexStrToInt(lastResult);
+    }
+    else
+    {
+        QVariant endResult;
+        if(instruct==flowControl)
+        {
+           QByteArray flowIDArr =  lastResult.mid(1,1);
+           QByteArray tapIDsArr = lastResult.mid(2,3);
+           qDebug()<<Q_FUNC_INFO<<__LINE__<<"flowID:"<<flowIDArr<<" tapIDs:"<<tapIDsArr<<" lastResult:"<<lastResult;
+
+        }
+        else if(instruct == gateDebug ||instruct == gateSetupForPressure)
+        {
+            QList<int>intsList = intsFromByteArr(lastResult);
+            endResult = QVariant::fromValue<QList<int>>(intsList);
+        }
+        else if(instruct == pressureMaintainSetup)
+        {
+            int pressureDiff =lastResult.mid(2,1).toHex().toInt();
+            int pressureSwith = lastResult.mid(3,1).toHex().toInt();
+            qDebug()<<Q_FUNC_INFO<<__LINE__<<"lastResult.mid(2,1):"<<lastResult.mid(2,1)<<" pressureDiff:"<<pressureDiff
+                      <<"lastResult.mid(3,1):"<<lastResult.mid(3,1)<<" pressureSwith:"<<pressureSwith;
+            QList<int>intsList;
+            intsList.append(pressureDiff);
+            intsList.append(pressureSwith);
+            endResult = QVariant::fromValue<QList<int>>(intsList);
+        }
+        else
+            return lastResult;
+        return endResult;
+    }
+}
+
+void DevManage::changeDevState()
+{
+    if(m_device)
+    {
+        if(m_device->isOpen())
+        {
+            setState(connected);
+            return;
+        }
+    }
+    setState(unconnect);
+
+}
+
+QByteArray DevManage::bitsToBytes(const QBitArray &bits)
+{
+    QByteArray bytes;
+    bytes.resize(bits.count() / 8 + ((bits.count() % 8)? 1: 0));
+    bytes.fill(0x00);
+    for (int b = 0; b < bits.count(); ++b)
+        bytes[b / 8] = ( bytes.at(b / 8) | ((bits[b] ? 1: 0) << (7 - (b % 8))));
+    return bytes;
+}
+
+QBitArray DevManage::bytesToBits(const QByteArray &bytes)
+{
+    QBitArray bits(bytes.count() * 8);
+    for (int i = 0; i < bytes.count(); ++i)
+        for (int b = 0; b < 8; ++b)
+            bits.setBit(i * 8 + b, bytes.at(i) & (0x01 << (7 - b)));
+    return bits;
+}
+
+QByteArray DevManage::byteArrFormInts(QList<int> intList, int byteLength)
+{
+    QBitArray bitArr;
+    bitArr.resize(byteLength*8);
+    bitArr.fill(false);
+    for(int index = 0;index<intList.length();index++)
+    {
+        int value = intList.at(index);
+        if(value<=byteLength*8)
+        {
+            bitArr.setBit(byteLength*8-value,true);
+        }
+    }
+//    qDebug()<<Q_FUNC_INFO<<__LINE__<<"bitArr:"<<bitArr;
+    return bitsToBytes(bitArr);
+
+}
+
+QList<int> DevManage::intsFromByteArr(QByteArray array)
+{
+    QList<int> intList;
+    QBitArray bitArr = bytesToBits(array);
+    for(int index = 0;index<bitArr.size();index++)
+    {
+        if(bitArr.at(index))
+        {
+            intList.append(bitArr.size()-index);
+        }
+
+    }
+    std::sort(intList.begin(),intList.end());
+    return intList;
+}
+
+
+
+QByteArray DevManage::IEEE754FloatToHexStr(float value)
+{
+
+    const quint32 *i = reinterpret_cast<const quint32 *>(&value);
+    QByteArray ba;
+    ba.append(char(*i >> 24));
+    ba.append(char(*i >> 16));
+    ba.append(char(*i >>  8));
+    ba.append(char(*i >>  0));
+    return ba;
+
+}
+
+float DevManage::IEEE754HexStrToFloat(QByteArray str)
+{
+    //    const QByteArray ba = QByteArray::fromHex(str);
+    const QByteArray ba = str;
+    if (ba.size() != 4)
+    {
+        qWarning()<<Q_FUNC_INFO<<__LINE__<<("str length errror:"+str);
+        throw("str length errror:"+str);
+        return 0;
+    }
+
+    quint32 word = quint32((quint8(ba.at(0)) << 24) |
+                           (quint8(ba.at(1)) << 16) |
+                           (quint8(ba.at(2)) <<  8) |
+                           (quint8(ba.at(3)) <<  0));
+
+    const float *f = reinterpret_cast<const float *>(&word);
+    return *f;
+}
+
+
+
+QByteArray DevManage::ConvertIntToIEE754(unsigned int value, int byteLength)
+{
+    QString str16 = QString("%1").arg(value, byteLength*2, 16, QLatin1Char('0'));
+    QByteArray result = QByteArray::fromHex(str16.toUtf8());
+    //    qDebug()<<Q_FUNC_INFO<<__LINE__<<" value:"<<value<<" result:"<<result<<" hex:"<<result.toHex();
+    return result;
+}
+
+unsigned int DevManage::IEEE754HexStrToInt(QByteArray str)
+{
+    bool ok = false;
+    str = str.toHex();
+    unsigned int result = str.toUInt(&ok,16);
+    if(ok)
+    {
+        return result;
+    }
+    else
+    {
+        qWarning()<<Q_FUNC_INFO<<__LINE__<<QString("IEEE754HexStrToInt Fail:")+str;
+        throw(QString("IEEE754HexStrToInt Fail:%1")+str);
+        return 0;
+    }
+}
+
+QByteArray DevManage::ModbusCRC16(QByteArray senddata)
+{
+    int len=senddata.size();
+    uint16_t wcrc=0XFFFF;//预置16位crc寄存器，初值全部为1
+    uint8_t temp;//定义中间变量
+    int i=0,j=0;//定义计数
+    for(i=0;i<len;i++)//循环计算每个数据
+    {
+        temp=senddata.at(i);
+        wcrc^=temp;
+        for(j=0;j<8;j++){
+            //判断右移出的是不是1，如果是1则与多项式进行异或。
+            if(wcrc&0X0001){
+                wcrc>>=1;//先将数据右移一位
+                wcrc^=0XA001;//与上面的多项式进行异或
+            }
+            else//如果不是1，则直接移出
+                wcrc>>=1;//直接移出
+        }
+    }
+    temp=wcrc;//crc的值
+    QByteArray result = QByteArray::fromHex(QByteArray::number(wcrc,16));
+    //    qDebug()<<Q_FUNC_INFO<<__LINE__<<"senddata:"<<senddata<<" result:"<<result;
+    return result;
+}
+
