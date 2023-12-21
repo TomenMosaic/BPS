@@ -4,6 +4,7 @@
 #include "layer.h"
 
 #include <QJsonObject>
+#include <QSet>
 
 class Package {
 public:
@@ -86,6 +87,16 @@ public:
         script = script.replace("{LayerCount}", QString::number(this->layers.size()));
         script = script.replace("{PackageHeight}", QString::number(this->height));
         script = script.replace("{PackageWidth}", QString::number(this->width));
+
+        // 包含板件名称列表
+        QSet<QString> panelNameSet;
+        foreach (const Layer layer, layers){
+            foreach (Panel* panel, layer.panels){
+                panelNameSet.insert(panel->name);
+            }
+        }
+        script = script.replace("{PanelNames}", panelNameSet.toList().join(","));
+
         return script;
     }
 

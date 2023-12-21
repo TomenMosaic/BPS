@@ -77,14 +77,14 @@ void AppConfig::loadFromIni(QString &filePath)
     m_deviceConfig.importDir = m_globalSettings->value("importDir").toString();
     Threshold threshold;
     threshold.name = "围边(非窄条)";
-    threshold.condition = "{LayerCount}>1 && {PackageWidth}>100";
+    threshold.condition = "{LayerCount}>1 && {PackageWidth}>100 && '{PanelNames}'.indexOf('门板') !== -1";
     threshold.length = 36;
     threshold.width = 36;
     m_deviceConfig.thresholds.append(threshold);
 
     Threshold threshold2;
     threshold2.name = "围边高度(非窄条)";
-    threshold2.condition = "{LayerCount}>1 && {PackageHeight} >= 36 && {PackageWidth}>100";
+    threshold2.condition = "{LayerCount}>1 && {PackageWidth}>100 && '{PanelNames}'.indexOf('门板') !== -1 && {PackageHeight} >= 36";
     threshold2.heightExpression = "{PackageHeight} <= 80 ? (Math.ceil({PackageHeight} / 20) * 21) - {PackageHeight} : 0";
     m_deviceConfig.thresholds.append(threshold2);
 
