@@ -58,7 +58,13 @@ public:
 
     enum StatusEnum{
         Status_Init = 0,
+        // 计算结束
         Status_Calculated = 19,
+        // 等待扫码
+        Status_WaitingForScan = 20,
+        // 等待发送
+        Status_WaitingForSend = 26,
+        // 已经发送
         Status_Sent = 39,
         Status_Finish = 99
     };
@@ -129,6 +135,10 @@ public:
     QSharedPointer<Row> detail(uint id);
 
     bool calculated(uint id);
+
+    bool waitingForScan(uint id, QString message = "");
+
+    bool waitingForSend(uint id);
 
     bool sent(uint id, QString message = "");
 

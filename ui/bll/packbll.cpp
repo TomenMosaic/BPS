@@ -42,6 +42,10 @@ QString PackBLL::statusEnumToString(StatusEnum status){
         return QStringLiteral("初始化");
     case Status_Calculated:
         return QStringLiteral("计算结束");
+    case Status_WaitingForScan:
+        return QStringLiteral("等待扫码");
+    case Status_WaitingForSend:
+        return QStringLiteral("等待发送");
     case Status_Sent:
         return QStringLiteral("已发送");
     case Status_Finish:
@@ -126,20 +130,20 @@ int PackBLL::insertByPackStruct(const Package& package){
 
         //2. 插入关联的panel记录
         foreach (Layer layer, package.layers) {
-            foreach(const Panel* panel, layer.panels){
+            foreach(const Panel& panel, layer.panels){
                 QMap<QString, QVariant> panelMapList;
                 panelMapList.insert("pack_id", newPackId);
-                panelMapList.insert("name", panel->name);
-                panelMapList.insert("remark", panel->remark);
-                panelMapList.insert("external_id", panel->externalId);
-                panelMapList.insert("layer", panel->layerNumber);
+                panelMapList.insert("name", panel.name);
+                panelMapList.insert("remark", panel.remark);
+                panelMapList.insert("external_id", panel.externalId);
+                panelMapList.insert("layer", panel.layerNumber);
                 panelMapList.insert("position", QString("%1,%2").
-                                                    arg(panel->position.x()).
-                                                    arg(panel->position.y()));
-                panelMapList.insert("rotated",QString::number(panel->rotated));
-                panelMapList.insert(this->dbColumnNames.at(Length),QString::number(panel->length));
-                panelMapList.insert(this->dbColumnNames.at(Width),QString::number(panel->width));
-                panelMapList.insert(this->dbColumnNames.at(Height),QString::number(panel->height));
+                                                    arg(panel.position.x()).
+                                                    arg(panel.position.y()));
+                panelMapList.insert("rotated",QString::number(panel.rotated));
+                panelMapList.insert(this->dbColumnNames.at(Length),QString::number(panel.length));
+                panelMapList.insert(this->dbColumnNames.at(Width),QString::number(panel.width));
+                panelMapList.insert(this->dbColumnNames.at(Height),QString::number(panel.height));
 
                 panelMapList.insert(this->dbColumnNames.at(CreateTime),formattedTime);
                 panelMapList.insert(this->dbColumnNames.at(LastModifyTime),formattedTime);
@@ -186,6 +190,14 @@ QSharedPointer<Row> PackBLL::detail(uint id){
 
 bool PackBLL::calculated(uint id){
     return updateStatus(id, PackBLL::Status_Calculated);
+}
+
+bool PackBLL::waitingForScan(uint id, QString message){
+    return updateStatus(id, PackBLL::Status_WaitingForScan, message);
+}
+
+bool PackBLL::waitingForSend(uint id){
+    return updateStatus(id, PackBLL::Status_WaitingForSend);
 }
 
 bool PackBLL::sent(uint id, QString message){

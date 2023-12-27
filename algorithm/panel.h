@@ -46,6 +46,32 @@ public:
 
     }
 
+    // 拷贝构造函数
+    Panel(const Panel& other)
+        : id(other.id), externalId(other.externalId), no(other.no),
+          length(other.length), width(other.width), height(other.height),
+          name(other.name), remark(other.remark), createTime(other.createTime),
+          layerNumber(other.layerNumber), position(other.position), rotated(other.rotated) {
+    }
+
+    Panel& operator=(const Panel& other) {
+        if (this != &other) {
+            id = other.id;
+            externalId = other.externalId;
+            no = other.no;
+            length = other.length;
+            width = other.width;
+            height = other.height;
+            name = other.name;
+            remark = other.remark;
+            createTime = other.createTime;
+            layerNumber = other.layerNumber;
+            position = other.position;
+            rotated = other.rotated;
+        }
+        return *this;
+    }
+
     // 计算板件面积的函数
     int area() const {
         return length * width;

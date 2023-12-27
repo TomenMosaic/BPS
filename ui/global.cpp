@@ -75,25 +75,49 @@ void AppConfig::loadFromIni(QString &filePath)
     m_deviceConfig.deviceIp = m_globalSettings->value("deviceIp").toString();
     m_deviceConfig.devicePort = m_globalSettings->value("devicePort").toInt();
     m_deviceConfig.importDir = m_globalSettings->value("importDir").toString();
-    Threshold threshold;
+   /* Threshold threshold;
     threshold.name = "围边(非窄条)";
     threshold.condition = "{LayerCount}>1 && {PackageWidth}>100 && '{PanelNames}'.indexOf('门板') !== -1";
-    threshold.length = 36;
-    threshold.width = 36;
+    threshold.length = 40;
+    threshold.width = 40;
     m_deviceConfig.thresholds.append(threshold);
 
     Threshold threshold2;
-    threshold2.name = "围边高度(非窄条)";
-    threshold2.condition = "{LayerCount}>1 && {PackageWidth}>100 && '{PanelNames}'.indexOf('门板') !== -1 && {PackageHeight} >= 36";
-    threshold2.heightExpression = "{PackageHeight} <= 80 ? (Math.ceil({PackageHeight} / 20) * 21) - {PackageHeight} : 0";
+    threshold2.name = "柜体长高+5mm. 宽度+2mm";
+    threshold2.condition = "{PackageWidth}>100 && '{PanelNames}'.indexOf('柜体') !== -1";
+    threshold2.length = 5;
+    threshold2.height = 5;
+    threshold2.width = 2;
     m_deviceConfig.thresholds.append(threshold2);
 
     Threshold threshold3;
-    threshold3.name = "窄条箱型";
+    threshold3.name = "窄条箱型 & 长+5mm";
     threshold3.condition = "{PackageWidth}<=100";
+    threshold3.width = 5;
     threshold3.packTemplate = "4160010";
     m_deviceConfig.thresholds.append(threshold3);
 
+    Threshold threshold4;
+    threshold4.name = "17->18";
+    threshold4.condition = "0=={PackageHeight}-{LayerCount}*17";
+    threshold4.heightExpression = "{LayerCount}";
+    m_deviceConfig.thresholds.append(threshold4);
+
+    WaitingCondition waitingCondition;
+    waitingCondition.name = "扫码确认阈值";
+    waitingCondition.condition = "'{PanelRemarks}'.indexOf('看图') !== -1";
+    waitingCondition.action = "scan";
+    m_deviceConfig.waitingConditions.append(waitingCondition); */
+
+    /*Threshold threshold2;
+    threshold2.name = "围边高度(非窄条)";
+    threshold2.condition = "{LayerCount}>1 && {PackageWidth}>100 && '{PanelNames}'.indexOf('门板') !== -1 && {PackageHeight} >= 36";
+    threshold2.heightExpression = "{PackageHeight} <= 80 ? (Math.ceil({PackageHeight} / 20) * 21) - {PackageHeight} : 0";
+    m_deviceConfig.thresholds.append(threshold2);*/
+
+    m_deviceConfig.maxWidth4Strip = m_globalSettings->value("maxWidth4Strip").toInt();
+    m_deviceConfig.maxLengthExceed = m_globalSettings->value("maxLengthExceed").toInt();
+    m_deviceConfig.maxWidthExceed = m_globalSettings->value("maxWidthExceed").toInt();
     m_globalSettings->endGroup();
 
     // 清理配置
@@ -173,6 +197,9 @@ void AppConfig::save()
     m_globalSettings->setValue("deviceIp", m_deviceConfig.deviceIp);
     m_globalSettings->setValue("devicePort", m_deviceConfig.devicePort);
     m_globalSettings->setValue("importDir", m_deviceConfig.importDir);
+    m_globalSettings->setValue("maxWidth4Strip", m_deviceConfig.maxWidth4Strip);
+    m_globalSettings->setValue("maxLengthExceed", m_deviceConfig.maxLengthExceed);
+    m_globalSettings->setValue("maxWidthExceed", m_deviceConfig.maxWidthExceed);
     m_globalSettings->endGroup();
 
     // 清理配置

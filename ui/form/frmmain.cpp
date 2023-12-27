@@ -3,7 +3,6 @@
 #include "ui_frmmain.h"
 #include "iconhelper.h"
 #include "quihelper.h"
-#include "packbll.h"
 
 #include <QList>
 #include <QScriptEngine>
@@ -35,11 +34,26 @@ frmMain::frmMain(QWidget *parent) : QDialog(parent),
     ui->setupUi(this);
     this->initForm(); // 初始化
 
-    this->m_algorithm = new Algorithm(g_config->getDeviceConfig().maxLengthExceed, g_config->getDeviceConfig().maxWidthExceed);
+    this->m_algorithm = new Algorithm(g_config->getDeviceConfig().maxLengthExceed,
+                                      g_config->getDeviceConfig().maxWidthExceed,
+                                      g_config->getDeviceConfig().maxWidth4Strip);
 
     ui->txtPackBarcode->installEventFilter(this);
     ui->txtPanelBarcode->installEventFilter(this);
     ui->stackedWidget->installEventFilter(this);
+
+    // 键盘钩子
+    this->m_globalHook = new GlobalHook();
+    this->m_globalHook->setHook();
+    QObject::connect(this->m_globalHook, &GlobalHook::scannedDataReceived, this, &frmMain::handleScannedData);
+
+    //
+    QTimer *timer = new QTimer(this);
+    connect(timer, &QTimer::timeout, this, [this](){
+        this->processTasks(); // 处理队列数据
+    });
+    timer->start(500); // 延迟500毫秒处理
+
 }
 
 frmMain::~frmMain()
@@ -56,6 +70,53 @@ frmMain::~frmMain()
 
     //
     delete ui;
+}
+
+void frmMain::handleScannedData(const QString &data) {
+    qDebug() << "handleScannedData:" << data;
+    QString scannedData = data.toLower();
+
+    // 是否等待队列为空，如果为空就退出
+    if (this->m_waitingQueue.isEmpty()){
+        return;
+    }
+
+    // 解析条码中的数据，格式为“ysp,{DataCLass},{Value}”
+    // 例如 ysbc,hyz,10  标识了这是一个识别码，高度阈值为10
+    QList<QString> array = scannedData.split(",");
+    QString head = array[0];
+    if (head != "ysbc"){
+        qWarning() << "二维码格式错误！";
+        return;
+    }
+    QString type = array[1]; // 判断类型，比如 hyz 高度阈值（mchyz 每层高度阈值），ls 层数
+    QString threshold = array[2];
+
+    // 根据信息更新订单对应的阈值
+    Package& pack = this->m_waitingQueue.head();
+    QString key = pack.getKey();
+
+    // 获取表达式
+    QString thresholdExpression;
+    if (type == "hyz"){
+        thresholdExpression = threshold;
+    }else if(type == "mchyz"){
+        thresholdExpression =  QString("%1*{LayerCount}").arg(threshold);
+    }
+
+    // 缓存表达式
+    if (this->m_orderThreshold.contains(key)){
+        this->m_orderThreshold[key].heightThreshold = thresholdExpression;
+    }else{
+        DimensionThresholds dt;
+        dt.heightThreshold = thresholdExpression;
+        this->m_orderThreshold[key] = dt;
+    }
+
+    // 处理等待队列中的数据
+    if (!this->m_waitingQueue.isEmpty() && this->m_waitingQueue.head().needsScanConfirmation){
+        this->m_waitingQueue.head().pendingScan = false; //
+    }
 }
 
 // 重写 paintEvent， 设置水印
@@ -131,10 +192,20 @@ bool frmMain::eventFilter(QObject *watched, QEvent *event)
 
 
 // 初始化配置
-void initializeConfig(QObject *parent) {
+void frmMain::initializeConfig(QObject *parent) {
     QString filePath = QApplication::applicationDirPath()+DEFAULT_SETTING; // 配置文件路径
     g_config = new AppConfig(); // 初始化
     g_config->loadFromIni(filePath);
+
+    // 从数据库中加载规则列表
+    auto conditions = this->m_conditionBll->getRowList(nullptr);
+    for (const ConditionDto& dto : qAsConst(conditions)){
+        if (dto.Type == ConditionDto::TypeEnum::threshold){
+            this->m_thresholdConditions.append(dto);
+        } else if (dto.Type == ConditionDto::TypeEnum::waitingCondition){
+            this->m_waitingConditions.append(dto);
+        }
+    }
 }
 
 // 初始化数据库
@@ -146,19 +217,20 @@ void initializeDatabase(QObject *parent){
 
 void frmMain::initForm()
 {
-    // 加载配置（如果配置不存在就创建默认的配置文件，并保存到文件夹中；如果配置文件存在，就解析配置文件，转换为指定的class）
-    initializeConfig(this);
-
     // 数据库初始化
     initializeDatabase(this);
+    this->m_packBll=PackBLL::getInstance(this); // 包裹表
+    this->m_panelBll=PanelBLL::getInstance(this); // 板件表
+    this->m_conditionBll=ConditionBLL::getInstance(this); // 条件表
+
+    // 加载配置（如果配置不存在就创建默认的配置文件，并保存到文件夹中；如果配置文件存在，就解析配置文件，转换为指定的class）
+    initializeConfig(this);
 
     // UI初始化
     this->initForm_UiInit();
 
     // 数据绑定
-    this->m_packBll=PackBLL::getInstance(this); // 包裹表
     this->initForm_PackDataBinding();
-    this->m_panelBll=PanelBLL::getInstance(this); // 板件表
 
     // socket server
     this->startSocketServer();
@@ -168,7 +240,7 @@ void frmMain::initForm_PackDataBinding(bool isReload){
     ui->tvPackList->verticalHeader()->setVisible(false); // 显示表头
 
     m_packModel = new QStandardItemModel(this);
-    m_packModel->setHorizontalHeaderLabels({ "包号","尺寸", "操作"}); // 列头
+    m_packModel->setHorizontalHeaderLabels({ "包号","尺寸", "状态"}); // 列头
     ui->tvPackList->setModel(m_packModel);
 
     m_packModel->setRowCount(0); // ??
@@ -180,7 +252,7 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         int colIndex = 0;
 
         // ID
-       /* QStandardItem *idItem = new QStandardItem(row->data(PackBLL::ID).toString());
+        /* QStandardItem *idItem = new QStandardItem(row->data(PackBLL::ID).toString());
         idItem->setTextAlignment(Qt::AlignCenter);
         itemList.insert(colIndex, idItem);
         colIndex++;*/
@@ -203,14 +275,14 @@ void frmMain::initForm_PackDataBinding(bool isReload){
 
         // status
         PackBLL::StatusEnum statusValue = static_cast<PackBLL::StatusEnum>(row->data(PackBLL::Status).toInt()); // 转换为枚举值
-       /* QString statusText = m_packBll->statusEnumToString(statusValue); // 转换为枚举对应的中文
+        QString statusText = m_packBll->statusEnumToString(statusValue); // 转换为枚举对应的中文
         QStandardItem *statusItem = new QStandardItem(statusText);
         statusItem->setTextAlignment(Qt::AlignCenter); // 居中
         itemList.insert(colIndex, statusItem);
-        colIndex++;*/
+        colIndex++;
 
-        // create time
-     /*   QString strCreateTime = row->data(PackBLL::CreateTime).toDateTime().toString("MM-dd HH:mm:ss");
+        /* // create time
+        QString strCreateTime = row->data(PackBLL::CreateTime).toDateTime().toString("MM-dd HH:mm:ss");
         QStandardItem *createTimeItem = new QStandardItem(strCreateTime);
         createTimeItem->setTextAlignment(Qt::AlignCenter); // 居中
         itemList.insert(colIndex, createTimeItem);
@@ -218,7 +290,7 @@ void frmMain::initForm_PackDataBinding(bool isReload){
 
         m_packModel->appendRow(itemList);
 
-        // 操作按钮：重新发送 / 打印
+        /* // 操作按钮：重新发送 / 打印
         QWidget *container = new QWidget();// 创建一个容器小部件
         QHBoxLayout *layout = new QHBoxLayout(container);// 创建一个水平布局
         layout->setContentsMargins(3, 3, 3, 3); // 设置最小边距
@@ -242,7 +314,7 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         layout->setAlignment(Qt::AlignCenter);
         layout->setSizeConstraint(QLayout::SetMinAndMaxSize);
         container->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
-        ui->tvPackList->setIndexWidget(m_packModel->index(m_packModel->rowCount()-1, colIndex), container);
+        ui->tvPackList->setIndexWidget(m_packModel->index(m_packModel->rowCount()-1, colIndex), container);*/
 
     }
 
@@ -250,7 +322,6 @@ void frmMain::initForm_PackDataBinding(bool isReload){
     ui->tvPackList->resizeRowsToContents(); // 这会调整行高以适应内容
     ui->tvPackList->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch); // 其他列使用 Stretch
     ui->tvPackList->horizontalHeader()->setSectionResizeMode(m_packModel->columnCount() - 1, QHeaderView::ResizeToContents); // 按钮列使用 ResizeToContents
-
 
     // pack table
     this->ui->tvPackList->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -272,13 +343,13 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         currentPackage.height = newRow->data(PackBLL::Height).toInt();
         QString createTime = newRow->data(PackBLL::CreateTime).toDateTime().toString("yyyy-MM-dd HH:mm:ss");
         QString msg = QString("id: %1， 包裹号: %2， 长： %3， 宽： %4， 高： %5， 创建时间：%6 \n %7").
-                            arg(packId).
-                            arg(currentPackage.no).
-                            arg(currentPackage.length).
-                            arg(currentPackage.width).
-                            arg(currentPackage.height).
-                            arg(createTime).
-                            arg(newRow->data(PackBLL::Logs).toString());
+                arg(packId).
+                arg(currentPackage.no).
+                arg(currentPackage.length).
+                arg(currentPackage.width).
+                arg(currentPackage.height).
+                arg(createTime).
+                arg(newRow->data(PackBLL::Logs).toString());
         this->ui->lblPackInfo->setText(msg);
 
         // 查找关联的板件列表
@@ -290,6 +361,7 @@ void frmMain::initForm_PackDataBinding(bool isReload){
                 Layer newLayer;
                 newLayer.addPanel(panel);
                 currentPackage.addLayer(newLayer);
+                panel.layerNumber = currentPackage.layers[currentPackage.layers.size() - 1].layerNumber;
             } else {
                 layer->addPanel(panel);
             }
@@ -410,23 +482,23 @@ void frmMain::initForm_PanelDataPreview() {
         }
 
         // 创建每个板件的图形矩形
-        for (const Panel* panel : layer.panels) {
-            int x = panel->position.x();
-            int y = panel->position.y();
+        for (const Panel& panel : layer.panels) {
+            int x = panel.position.x();
+            int y = panel.position.y();
 
             QString text = QString("%1; %2x%3x%4%5")
-                    .arg(panel->id)
-                    .arg(panel->length)
-                    .arg(panel->width)
-                    .arg(panel->height)
-                    .arg(panel->rotated ? "; r" : "");
+                    .arg(panel.id)
+                    .arg(panel.length)
+                    .arg(panel.width)
+                    .arg(panel.height)
+                    .arg(panel.rotated ? "; r" : "");
 
             // 创建矩形，位置和大小匹配板件的坐标和尺寸，设置边框和背景色
             QGraphicsRectItem *rectItem ;
-            if (panel->rotated) {// 如果板件旋转，长宽对调
-                rectItem = new QGraphicsRectItem(x, y, panel->width, panel->length);
+            if (panel.rotated) {// 如果板件旋转，长宽对调
+                rectItem = new QGraphicsRectItem(x, y, panel.width, panel.length);
             }else{
-                rectItem = new QGraphicsRectItem(x, y, panel->length, panel->width);
+                rectItem = new QGraphicsRectItem(x, y, panel.length, panel.width);
             }
             rectItem->setPen(QPen(Qt::black, 1)); // 1像素黑色边框
             rectItem->setBrush(QBrush(Qt::green)); //
@@ -869,20 +941,17 @@ void frmMain::sendFileToHotFolder(const Package &originPackage) {
     QDateTime now = QDateTime::currentDateTime();
     Package package = originPackage;
     QString packTemaplte = g_config->getPackTemplateConfig().defaultTemplate;
+    QScriptEngine engine;// 执行字符串脚本
 
     // 查找阈值
     QString message;
-    foreach(const auto threshold, g_config->getDeviceConfig().thresholds){
-        QString script = originPackage.getScript(threshold.condition);
+    for(const auto& threshold : this->m_thresholdConditions){
+        QString script = originPackage.getScript(threshold.Condition);
 
-        // 执行字符串脚本
-        QScriptEngine engine;
         bool result = engine.evaluate(script).toBool();
         if (result){
             // 基本的阈值
-            int tLength = threshold.length;
-            int tWidth = threshold.width;
-            int tHeight = threshold.height;
+            int tLength = 0, tWidth = 0, tHeight = 0;
 
             // 表达式
             if (!threshold.lengthExpression.isEmpty()){
@@ -901,18 +970,20 @@ void frmMain::sendFileToHotFolder(const Package &originPackage) {
                 tHeight += tmpHeight;
             }
 
+            // 加上最终的阈值
             package.length += tLength;
             package.width += tWidth;
             package.height += tHeight;
 
+            // 箱型
             if (!threshold.packTemplate.isEmpty()) {
                 packTemaplte = threshold.packTemplate;
             }
 
             // 日志
             QList<QString> condtionMsgs;
-            condtionMsgs.append("threshold name:"+threshold.name);
-            condtionMsgs.append("condition:"+threshold.condition);
+            condtionMsgs.append("threshold name:"+threshold.Name);
+            condtionMsgs.append("condition:"+threshold.Condition);
             if (!threshold.lengthExpression.isEmpty()){
                 condtionMsgs.append("length Expression:"+threshold.lengthExpression);
             }
@@ -924,13 +995,13 @@ void frmMain::sendFileToHotFolder(const Package &originPackage) {
             }
             QList<QString> resultMessages;
             if (tLength > 0){
-                 resultMessages.append("length + "+QString::number(tLength));
+                resultMessages.append("length + "+QString::number(tLength));
             }
             if (tWidth > 0){
-                 resultMessages.append("width + "+QString::number(tWidth));
+                resultMessages.append("width + "+QString::number(tWidth));
             }
             if (tHeight > 0){
-                 resultMessages.append("height + "+QString::number(tHeight));
+                resultMessages.append("height + "+QString::number(tHeight));
             }
             if (!threshold.packTemplate.isEmpty()){
                 resultMessages.append("pack template:"+packTemaplte);
@@ -945,7 +1016,48 @@ void frmMain::sendFileToHotFolder(const Package &originPackage) {
 
             // logs
             message += QString("threshold name: %1, %2 ; \n").
-                    arg(threshold.name, resultMessages.join(","));
+                    arg(threshold.Name, resultMessages.join(","));
+        }
+    }
+
+    // 是否为等待扫码
+    if (originPackage.needsScanConfirmation && !originPackage.pendingScan) {
+        QString key = originPackage.getKey();
+        auto threshold = this->m_orderThreshold[key];
+        if (threshold.hasValues()){
+            QList<QString> condtionMsgs;
+            if (threshold.lengthThreshold != 0){
+                QString tmpScript = originPackage.getScript(threshold.lengthThreshold);
+                qint32 tmpLength = engine.evaluate(tmpScript).toInt32();
+                condtionMsgs.append("length +"+QString::number(tmpLength));
+                package.length += tmpLength;
+            }
+            if (threshold.widthThreshold != 0){
+                QString tmpScript = originPackage.getScript(threshold.widthThreshold);
+                qint32 tmpWidth = engine.evaluate(tmpScript).toInt32();
+                condtionMsgs.append("width +"+QString::number(tmpWidth));
+                package.width += tmpWidth;
+            }
+            if (threshold.heightThreshold != 0){
+                QString tmpScript = originPackage.getScript(threshold.heightThreshold);
+                qint32 tmpHeight = engine.evaluate(tmpScript).toInt32();
+                condtionMsgs.append("height +"+QString::number(tmpHeight));
+                package.height += tmpHeight;
+            }
+            qDebug() << QString("pack (%1, %2, %3x%4x%5) use ").
+                        arg(QString::number(package.id),
+                            package.no,
+                            QString::number(originPackage.length),
+                            QString::number(originPackage.width),
+                            QString::number(originPackage.height))
+                     << condtionMsgs.join(",");
+
+            // logs
+            message += QString(" scan threshold: %1 ; \n").
+                    arg(condtionMsgs.join(","));
+
+        }else{
+            qWarning() << key + "对应 扫码阈值为空";
         }
     }
 
@@ -994,6 +1106,7 @@ void frmMain::sendFileToHotFolder(const Package &originPackage) {
     QString hotFilePath = hotDir.filePath(fileName);// 文件路径在热文件夹中
     if (!file.copy(hotFilePath)) { // 复制文件到热文件夹
         qWarning() << "Could not copy file to hot folder" << hotFilePath;
+        return;
     }
 
     // 更新状态为已发送
@@ -1084,17 +1197,83 @@ bool frmMain::parseSocketClientData(QString message)
 
     // 创建包裹数据
     int newPackId = this->m_packBll->insertByPackStruct(pack);
-    this->initForm_PackDataBinding();
+    this->initForm_PackDataBinding(); // 必须运行一下，否则后面再 运行update status的时候会报错
 
-    // 发送包裹数据
+    // 赋值
     pack.id = newPackId;
-    this->sendFileToHotFolder(pack);
 
-    // 更新包裹状态
+    // 检查当前包裹是否需要扫码增加阈值
+    bool isWaitingForAction = false;
+    for(const auto& waitingCondition: qAsConst(this->m_waitingConditions)){
+        QString script = pack.getScript(waitingCondition.Condition);
+
+        // 执行字符串脚本
+        QScriptEngine engine;
+        bool result = engine.evaluate(script).toBool();
+        if (result){
+
+            // 日志
+            QList<QString> condtionMsgs;
+            condtionMsgs.append("threshold name:"+waitingCondition.Name);
+            condtionMsgs.append("action:"+waitingCondition.action);
+            qDebug() << QString("pack (%1, %2, %3x%4x%5) ").
+                        arg(QString::number(pack.id),
+                            pack.no,
+                            QString::number(pack.length),
+                            QString::number(pack.width),
+                            QString::number(pack.height))
+                     << condtionMsgs.join(",");
+
+            // logs
+            message += QString("waiting condition name: %1, %2 ; \n").
+                    arg(waitingCondition.Name, condtionMsgs.join(","));
+
+            // 如果是 扫码就更新包裹的 状态
+            if (waitingCondition.action == ConditionDto::ActionEnum::scan){
+                this->m_packBll->waitingForScan(newPackId, condtionMsgs.join(","));
+                pack.needsScanConfirmation = true;
+                pack.pendingScan = true;
+                isWaitingForAction = true;
+                break;
+            }
+        }
+    }
+    // 等待发送
+    if (!isWaitingForAction){
+        this->m_packBll->waitingForSend(newPackId);
+    }
     this->initForm_PackDataBinding();
+
+    // 加入队列
+    this->enqueueTask(pack);
 
     // 成功处理
     return true;
 }
 
+// 加入队列
+void frmMain::enqueueTask(Package& pack){
+    this->m_waitingQueue.enqueue(pack);
+}
+
+// 处理队列中的任务
+void frmMain::processTasks()
+{
+    // 队列不为空，且队列头部的任务不为等待扫码状态
+    if (!this->m_waitingQueue.isEmpty()){
+        if  (!this->m_waitingQueue.head().needsScanConfirmation
+             || (this->m_waitingQueue.head().needsScanConfirmation
+                 && !this->m_waitingQueue.head().pendingScan)){
+            // 出队
+            Package pack = this->m_waitingQueue.dequeue();
+
+            // 发送包裹数据
+            this->sendFileToHotFolder(pack);
+
+            // 更新表格状态
+            this->initForm_PackDataBinding();
+        }
+
+    }
+}
 

@@ -5,8 +5,8 @@
 #include <QQueue>
 
 
-Algorithm::Algorithm(int maxLengthExceed, int maxWidthExceed) :
-    m_maxLengthExceed(maxLengthExceed), m_maxWidthExceed(maxWidthExceed)
+Algorithm::Algorithm(int maxLengthExceed, int maxWidthExceed, int maxWidth4Strip) :
+    m_maxLengthExceed(maxLengthExceed), m_maxWidthExceed(maxWidthExceed), m_maxWidth4Strip(maxWidth4Strip)
 {
 
 }
@@ -47,10 +47,10 @@ void Algorithm::sortPanels(QList<Panel>& panels) {
     }
 
     for (const Panel* placedPanel : layerPanels) {
-        int placedPanelLength = placedPanel->rotated ? placedPanel->width :  placedPanel->length;
-        int placedPanelWidth =  placedPanel->rotated ? placedPanel->length :  placedPanel->width;
-        int placedPanelX =  placedPanel->position.x();
-        int placedPanelY =  placedPanel->position.y();
+        int placedPanelLength = placedPanel.rotated ? placedPanel.width :  placedPanel.length;
+        int placedPanelWidth =  placedPanel.rotated ? placedPanel.length :  placedPanel.width;
+        int placedPanelX =  placedPanel.position.x();
+        int placedPanelY =  placedPanel.position.y();
 
         // 1. 检查板件是否重叠
         if (posX < placedPanelX + placedPanelLength
@@ -63,7 +63,7 @@ void Algorithm::sortPanels(QList<Panel>& panels) {
     return true; // 1.2 未发现重叠，位置可用
 }*/
 
-bool Algorithm::canPlacePanel(const QList<Panel*> layerPanels, const Panel& panel,
+bool Algorithm::canPlacePanel(const QList<Panel> layerPanels, const Panel& panel,
                               int posX, int posY, int maxPackageLength, int maxPackageWidth, bool isFix = false) {
     // rect 对象的width相当于 length，height相当于width
     int panelLength = panel.rotated ? panel.width : panel.length;
@@ -77,11 +77,11 @@ bool Algorithm::canPlacePanel(const QList<Panel*> layerPanels, const Panel& pane
     }
 
     // 检查是否和已经存在的板件重叠
-    for (const Panel* placedPanel : layerPanels) {
-        int placedPanelLength = placedPanel->rotated ? placedPanel->width : placedPanel->length;
-        int placedPanelWidth = placedPanel->rotated ? placedPanel->length : placedPanel->width;
-        int placedPanelX = placedPanel->position.x();
-        int placedPanelY = placedPanel->position.y();
+    for (const Panel& placedPanel : layerPanels) {
+        int placedPanelLength = placedPanel.rotated ? placedPanel.width : placedPanel.length;
+        int placedPanelWidth = placedPanel.rotated ? placedPanel.length : placedPanel.width;
+        int placedPanelX = placedPanel.position.x();
+        int placedPanelY = placedPanel.position.y();
 
         if (posX < placedPanelX + placedPanelLength // x值在已存在的板件中
                 && posX + panelLength > placedPanelX // 已存在板件的x在 “检测板件” 中
@@ -185,6 +185,9 @@ bool Algorithm::forcePlacePanelInPackageLayers(Package& package, Panel& originPa
         // 遍历已存在的板件，检测是否重叠，并更新到一个最优的位置上
         for (Layer& layer : package.layers) {
             for (int posX = 0; posX <= package.length; ++posX) {
+                if ( package.width >= this->m_maxWidth4Strip){ // 如果是窄条，不允许纵向并排放
+
+                }
                 for (int posY = 0; posY <= package.width; ++posY) {
                     int exceedLength = posX + panelLength - package.length;
                     int exceedWidth = posY + panelWidth - package.width;
@@ -197,11 +200,11 @@ bool Algorithm::forcePlacePanelInPackageLayers(Package& package, Panel& originPa
 
                     // 是否重叠
                     int skipX = 0, skipY = 0;
-                    for (const Panel* placedPanel : qAsConst(layer.panels)) {
-                        int placedPanelLength = placedPanel->rotated ? placedPanel->width : placedPanel->length;
-                        int placedPanelWidth = placedPanel->rotated ? placedPanel->length : placedPanel->width;
-                        int placedPanelX = placedPanel->position.x();
-                        int placedPanelY = placedPanel->position.y();
+                    for (const Panel& placedPanel : qAsConst(layer.panels)) {
+                        int placedPanelLength = placedPanel.rotated ? placedPanel.width : placedPanel.length;
+                        int placedPanelWidth = placedPanel.rotated ? placedPanel.length : placedPanel.width;
+                        int placedPanelX = placedPanel.position.x();
+                        int placedPanelY = placedPanel.position.y();
 
                         if (posX < placedPanelX + placedPanelLength // x值在已存在的板件中
                                 && posX + panelLength > placedPanelX // 已存在板件的x在 “检测板件” 中
@@ -228,7 +231,8 @@ bool Algorithm::forcePlacePanelInPackageLayers(Package& package, Panel& originPa
                     }
 
                     // 寻找长度超出的 最小层
-                    if (exceedLength < minimalExceed) {
+                    if (exceedLength < this->m_maxLengthExceed && exceedLength < minimalExceed
+                            && exceedWidth <= 0) {
                         minimalExceed = exceedLength;
                         bestPosition = QPoint(posX, posY);
                         bestLayer = &layer;
@@ -335,7 +339,7 @@ void Algorithm::updatePackageSize(QList<Panel>& panels, Package& package){
     }
 
     //2. 1 块大板+1 窄条时，如果窄条堆叠在大板上面会导致很多填充物，所以需要和大板并排放
-    if (panels.size() == 2){
+    if (panels.size() == 2 && package.width >= m_maxWidth4Strip){
         auto panelMax = panels[0];
         auto panelNarrowStrip = panels[1];
         if (panelNarrowStrip.width <= this->m_maxLengthExceed){ // 窄条
@@ -394,15 +398,16 @@ Package Algorithm::createLayers(QList<Panel>& panels) {
     }
 
     //4. 查找最后一层，看是否可以抽出板件强制放到其他层
+    // 如果是窄条不能强制放到其他的层
     if (package.layers.size() > 1){
         Layer lastLayer = package.layers[package.layers.size() - 1];
         if (lastLayer.panels.size() == 1){
-            Panel* panel = lastLayer.panels[0];
+            Panel& panel = lastLayer.panels[0];
 
             // 层中空余的空间太多，即填充物需要放很多
             if ( (package.length * package.width - lastLayer.getUsedArea()) / 50*100  >= 3){
                 package.removeLayer(lastLayer.layerNumber); // 移除某层
-                if (!this->forcePlacePanelInPackageLayers(package, *panel)) { //
+                if (!this->forcePlacePanelInPackageLayers(package, panel)) { //
                     package.addLayer(lastLayer); // 加回去
                 }
             }

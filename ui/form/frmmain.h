@@ -10,15 +10,35 @@
 #include <QWebSocketServer>
 #include <QWebSocket>
 
+#include <QQueue>
+
 #include "packbll.h"
 #include "panelbll.h"
+#include "conditionbll.h"
+
 #include "panel.h"
 #include "algorithm.h"
 #include "global.h"
 
+#include "globalhook.h"
+
 namespace Ui {
 class frmMain;
 }
+
+struct DimensionThresholds {
+    QString lengthThreshold;
+    QString widthThreshold;
+    QString heightThreshold;
+
+    DimensionThresholds()
+            : lengthThreshold(""), widthThreshold(""), heightThreshold("") {}
+
+    bool hasValues(){
+        return !lengthThreshold.isEmpty() || !widthThreshold.isEmpty() || !heightThreshold.isEmpty();
+    }
+
+};
 
 class frmMain : public QDialog
 {
@@ -62,7 +82,7 @@ private:
     void initForm();
     void initForm_UiInit();
 
-    //
+    void initializeConfig(QObject *parent);
     void initForm_PackDataBinding(bool isReload = false);
 
     //
@@ -78,6 +98,9 @@ private:
     // 处理socket client发送的数据
     bool parseSocketClientData(const QString socketClientData);
     bool parseSocketClientData(const QByteArray &binaryMessage);
+
+    // 处理键盘钩子获取到的扫码数据
+    void handleScannedData(const QString &data);
 
 private slots:
     // 开启 socket server
@@ -95,6 +118,7 @@ private:
     QStandardItemModel *m_packModel;
     PackBLL *m_packBll;
     PanelBLL *m_panelBll;
+    ConditionBLL *m_conditionBll;
 
     Package m_panelsPackage;
     QList<Panel> m_panels;
@@ -107,6 +131,14 @@ private:
     QWebSocketServer *m_webSocketServer;
     QMap<QString, QWebSocket*> m_webSocketClients;
 
+    // 键盘钩子
+    GlobalHook *m_globalHook;
+
+    // 添加任务到队列
+    void enqueueTask(Package& pack);
+
+    // 处理队列中的任务
+    void processTasks();
 
 protected:
     // 重写关闭事件
@@ -135,6 +167,15 @@ private slots:
 private:
     QSystemTrayIcon *trayIcon;
     Algorithm* m_algorithm;
+
+    // 等待队列
+    QQueue<Package> m_waitingQueue;
+    // 订单和阈值的对应关系
+    QMap<QString, DimensionThresholds> m_orderThreshold;
+    // 阈值条件列表
+    QList<ConditionDto> m_thresholdConditions;
+    // 等待条件列表
+    QList<ConditionDto> m_waitingConditions;
 
 };
 

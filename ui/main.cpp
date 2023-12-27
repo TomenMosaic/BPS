@@ -100,13 +100,13 @@ void customMessageHandler(QtMsgType type, const QMessageLogContext &context, con
 //
 int main(int argc, char *argv[])
 {
-    try {
-        // log init
-        CLog::LogConfig logConfig;
-        logConfig.isRecord2File = true;
-        logConfig.level = 0;
-        CLog::init(logConfig);
+    // log init
+    CLog::LogConfig logConfig;
+    logConfig.isRecord2File = true;
+    logConfig.level = 0;
+    CLog::init(logConfig);
 
+    try {
         // 安装消息处理程序
         qInstallMessageHandler(customMessageHandler);
 
@@ -130,9 +130,6 @@ int main(int argc, char *argv[])
 
         // 加载主窗体
         frmMain main;
-        //QRect screenRect = QApplication::screens().at(0)->geometry();
-        //main.resize(screenRect.size()); // 尺寸
-        // QUIHelper::setFormInCenter(&main); // 居中
         main.showMaximized();
 
         // add log

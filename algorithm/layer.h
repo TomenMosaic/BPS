@@ -7,18 +7,43 @@
 class Layer {
 public:
     int layerNumber;
-    QList<Panel*> panels;
+    QList<Panel> panels;
     int height;
 
     Layer() : layerNumber(0), height(0), private_usedArea(0) {
 
     }
 
+    // 拷贝构造函数
+    Layer(const Layer& other) :
+        layerNumber(other.layerNumber), height(other.height), private_usedArea(other.private_usedArea) {
+        for (Panel panel : other.panels) {
+            Panel newPanel(panel);
+            panels.append(newPanel); // 假设Panel有合适的拷贝构造函数
+        }
+    }
+
+    // 拷贝赋值运算符
+    Layer& operator=(const Layer& other) {
+        if (this != &other) {
+            layerNumber = other.layerNumber;
+            height = other.height;
+
+            panels.clear();
+
+            for (Panel panel : other.panels) {
+                Panel newPanel(panel);
+                panels.append(newPanel); // 假设Panel有合适的拷贝构造函数
+            }
+        }
+        return *this;
+    }
+
     // 添加板件到层
     void addPanel(Panel& panel) {
         // 添加到列表
         panel.layerNumber = layerNumber;
-        panels.append(&panel);
+        panels.append(panel);
 
         // 更新总高度
         if (panel.height > height) {
@@ -28,7 +53,7 @@ public:
         // 更新使用面积
         private_usedArea = 0;
         for (const auto& panel : this->panels){
-            private_usedArea += panel->area();
+            private_usedArea += panel.area();
         }
 
         // 标记不可重叠的区域

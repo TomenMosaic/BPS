@@ -15,17 +15,56 @@ public:
     QString no;
     // 客户名称
     QString customerName;
+    // 订单号
+    QString orderNo;
+    // 安装所在的位置，比如客厅鞋柜、卧室衣柜
+    QString location;
     QList<Layer> layers;
+    // 是否需要扫码确认
+    bool needsScanConfirmation = false;
+    // 等待
+    bool pendingScan = false;
 
     Package() : length(0), width(0), height(0) {}
+
+
+    // 拷贝构造函数
+    Package(const Package& other)
+        : id(other.id), length(other.length), width(other.width),
+          height(other.height), no(other.no), customerName(other.customerName),
+          orderNo(other.orderNo), location(other.location),
+          layers(other.layers), // 假定Layer也实现了深拷贝
+          needsScanConfirmation(other.needsScanConfirmation),
+          pendingScan(other.pendingScan) {
+
+    }
+
+    // 拷贝赋值运算符
+    Package& operator=(const Package& other) {
+        if (this != &other) {
+            id = other.id;
+            length = other.length;
+            width = other.width;
+            height = other.height;
+            no = other.no;
+            customerName = other.customerName;
+            orderNo = other.orderNo;
+            location = other.location;
+            layers = other.layers; // 假定Layer也实现了深拷贝
+            needsScanConfirmation = other.needsScanConfirmation;
+            pendingScan = other.pendingScan;
+        }
+        return *this;
+    }
+
 
     void addLayer(Layer& layer) {
         //TODO 检测是否存在
 
         layer.layerNumber = layers.length() + 1;
-        foreach (Panel* panel, layer.panels){
-            if (panel->layerNumber != layer.layerNumber){
-                panel->layerNumber = layer.layerNumber;
+        for (Panel& panel: layer.panels){
+            if (panel.layerNumber != layer.layerNumber){
+                panel.layerNumber = layer.layerNumber;
             }
         }
         layers.append(layer);
@@ -63,11 +102,11 @@ public:
 
     void clearLayers(){
         for (int i = 0; i < layers.size(); ++i){
-            foreach (Panel* panel, layers[i].panels){
-                panel->layerNumber = 0;
-                panel->position = QPoint();
-                if (panel->rotated){
-                    panel->rotate();
+            for (Panel& panel: layers[i].panels){
+                panel.layerNumber = 0;
+                panel.position = QPoint();
+                if (panel.rotated){
+                    panel.rotate();
                 }
             }
 
@@ -89,24 +128,37 @@ public:
         script = script.replace("{PackageWidth}", QString::number(this->width));
 
         // 包含板件名称列表
-        QSet<QString> panelNameSet;
-        foreach (const Layer layer, layers){
-            foreach (Panel* panel, layer.panels){
-                panelNameSet.insert(panel->name);
+        QSet<QString> panelNameSet; // name
+        QSet<QString> panelRemarkSet; // remark
+        for (const Layer& layer: qAsConst(layers)){
+            for (const Panel& panel: qAsConst(layer.panels)){
+                panelNameSet.insert(panel.name);
+                panelRemarkSet.insert(panel.remark);
             }
         }
         script = script.replace("{PanelNames}", panelNameSet.toList().join(","));
+        script = script.replace("{PanelRemarks}", panelRemarkSet.toList().join(","));
 
         return script;
     }
 
+    QString getKey() const{
+        QString result ;
+        if (customerName.isEmpty() && location.isEmpty()){
+            result = no;
+        }else{
+            result = QString("%1_%2").arg(customerName, location);
+        }
+        return result;
+    }
 
     // 重载==运算符 //TODO 是否可以去掉
     bool operator==(const Package& other) const {
         // 如果有多个属性需要比较，可以扩展比较逻辑
         return this->height == other.height
             && this->length == other.length
-            && this->width == other.width;
+            && this->width == other.width
+            && this->no == other.no;
     }
 
 };

@@ -15,7 +15,9 @@ enum WorkModeEnum
     // 扫描包裹
     pack_scan = 0, 
     // 扫描板件
-    board_scan = 1 ,
+    board_scan = 1,
+    // 通过socket获取数据
+    socat = 2
 };
 
 // 标签打印机类型
@@ -28,11 +30,12 @@ enum LabelPrinterTypeEnum{
     // TSC = 2
 };
 
+// socket 服务的类型
 enum SocketServerTypeEnum
 {
-    // 扫描包裹
+    // tcp
     tcp = 0,
-    // 扫描板件
+    // web socket
     web = 1 ,
 };
 
@@ -72,6 +75,18 @@ struct PackTemplateConfig {
     QString defaultTemplate = "4160000";
 };
 
+/*
+// 获取包裹数据后的等待条件
+struct WaitingCondition{
+    QString name;
+    // 条件
+    QString condition;
+    // scan 等待扫码
+    // measure 测量
+    QString action;
+};
+
+// 阈值
 struct Threshold{
 
     QString name;
@@ -89,6 +104,7 @@ struct Threshold{
 
     QString packTemplate;
 };
+*/
 
 // group: Device
 struct DeviceConfig {
@@ -122,13 +138,18 @@ struct DeviceConfig {
     length=400
     width=500
     height=600
-    */
+
     QList<Threshold> thresholds;
+
+    // 等待的条件列表
+    QList<WaitingCondition> waitingConditions;*/
 
     // 单层可超出的长度
     int maxLengthExceed = 50;
     // 单层可超出的宽度
     int maxWidthExceed = 50;
+    // 窄条的最大的宽度
+    int maxWidth4Strip = 100;
 };
 
 // group: Work

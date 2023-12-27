@@ -5,9 +5,11 @@ INCLUDEPATH += $$PWD
 HEADERS += \
     $$PWD/configmanage.h \
     $$PWD/convert.h \
-    $$PWD/log.h \
+    $$PWD/globalhook.h \
+    $$PWD/log.h
 
 SOURCES += \
     $$PWD/configmanage.cpp \
+    $$PWD/globalhook.cpp \
     $$PWD/log.cpp \
 

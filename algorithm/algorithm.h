@@ -11,7 +11,7 @@
 class Algorithm
 {
 public:
-    Algorithm(int maxLengthExceed, int maxWidthExceed);
+    Algorithm(int maxLengthExceed, int maxWidthExceed, int maxWidth4Strip);
 
 
     /**
@@ -32,7 +32,7 @@ private:
     bool forcePlacePanelInPackageLayers(Package& package, Panel& panel);
     bool isStableForPlacement(SpatialHashmap spaceMap, Panel& panel, int posX, int posY);
     //bool canPlacePanel(const QList<Panel*> layerPanels, const Panel& panel, int posX, int posY, int maxPackageLength, int maxPackageWidth);
-    bool canPlacePanel(const QList<Panel*> layerPanels, const Panel& panel,
+    bool canPlacePanel(const QList<Panel> layerPanels, const Panel& panel,
                        int posX, int posY, int maxPackageLength, int maxPackageWidth, bool isFix);
     void sortPanels(QList<Panel>& panels);
     // bool panelComparator(const Panel& a, const Panel& b);
@@ -43,6 +43,7 @@ private:
     // 最大可超出的尺寸
     int m_maxLengthExceed;
     int m_maxWidthExceed;
+    int m_maxWidth4Strip;
 };
 
 #endif // ALGORITHM_H
