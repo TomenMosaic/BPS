@@ -80,6 +80,7 @@ QSqlQuery DataBase::query(QString cmd)
 }
 
 
+
 void DataBase::updateCmd(QString cmd)
 {
     emit newQueryCmd(cmd);
@@ -258,6 +259,33 @@ QList<QStringList> DataBase::selectDataFromBase(QString strSql)
     }
     query.clear();
     return dataList;
+}
+
+
+bool DataBase::ExecSql(const QString& sql, const QMap<QString, QVariant>& params)
+{
+    QSqlDatabase db = QSqlDatabase::database();
+    db.transaction();
+    QSqlQuery query(db);
+    query.prepare(sql);
+    for (auto it = params.cbegin(); it != params.cend(); ++it) {
+        query.bindValue(it.key(), it.value());
+    }
+    bool ok = query.exec();
+
+    // 检查是否执行成功
+    if (ok) {
+        db.commit();
+    } else {
+        db.rollback();
+
+        // 错误处理: 可以记录错误信息，或者抛出异常等
+        qWarning() << "query Error: " << query.lastError().text() << sql;
+        CLOG_ERROR(QString("query error: "+ query.lastError().text()).toUtf8());
+    }
+
+    query.clear();
+    return ok;
 }
 
 bool DataBase::ExecSql(QString sql, QList<QVariant> data)

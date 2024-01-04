@@ -15,7 +15,9 @@ public:
         // 阈值
         threshold = 0,
         // 等待条件
-        waitingCondition = 1
+        waitingCondition = 1,
+        // 箱型选择
+        packTemplateCondition = 2,
     };
 
     enum ActionEnum{
@@ -85,6 +87,9 @@ public:
 
     //
     QList<ConditionDto> getRowList(ConditionDto::TypeEnum* type);
+
+    // 创建或者更新
+    bool createOrUpdate(ConditionDto& conditionDto);
 
     /**
      * @description:

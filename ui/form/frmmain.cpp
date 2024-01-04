@@ -53,7 +53,6 @@ frmMain::frmMain(QWidget *parent) : QDialog(parent),
         this->processTasks(); // 处理队列数据
     });
     timer->start(500); // 延迟500毫秒处理
-
 }
 
 frmMain::~frmMain()
@@ -82,35 +81,35 @@ void frmMain::handleScannedData(const QString &data) {
     }
 
     // 解析条码中的数据，格式为“ysp,{DataCLass},{Value}”
-    // 例如 ysbc,hyz,10  标识了这是一个识别码，高度阈值为10
+    // 例如 ysbc,hyz,10  标识了这是一个识别码，高度预值为10
     QList<QString> array = scannedData.split(",");
     QString head = array[0];
     if (head != "ysbc"){
         qWarning() << "二维码格式错误！";
         return;
     }
-    QString type = array[1]; // 判断类型，比如 hyz 高度阈值（mchyz 每层高度阈值），ls 层数
+    QString type = array[1]; // 判断类型，比如 hyz 高度预值（mchyz 每层高度预值），ls 层数
     QString threshold = array[2];
 
-    // 根据信息更新订单对应的阈值
+    // 根据信息更新订单对应的预值
     Package& pack = this->m_waitingQueue.head();
     QString key = pack.getKey();
 
-    // 获取表达式
-    QString thresholdExpression;
-    if (type == "hyz"){
-        thresholdExpression = threshold;
-    }else if(type == "mchyz"){
-        thresholdExpression =  QString("%1*{LayerCount}").arg(threshold);
+    if (!this->m_orderThreshold.contains(key)){
+        DimensionThresholds dt;
+        this->m_orderThreshold[key] = dt;
     }
 
-    // 缓存表达式
-    if (this->m_orderThreshold.contains(key)){
+    // 获取表达式
+    if (type == "hyz"){ // 高度预值
+        this->m_orderThreshold[key].heightThreshold = threshold;
+    }else if(type == "mchyz"){ // 每层高度的预值
+        QString thresholdExpression =  QString("%1*{LayerCount}").arg(threshold);
         this->m_orderThreshold[key].heightThreshold = thresholdExpression;
-    }else{
-        DimensionThresholds dt;
-        dt.heightThreshold = thresholdExpression;
-        this->m_orderThreshold[key] = dt;
+    }else if(type == "wyz"){ // 宽度预值
+        this->m_orderThreshold[key].widthThreshold = threshold;
+    }else if(type == "lyz"){ // 长度预值
+        this->m_orderThreshold[key].lengthThreshold = threshold;
     }
 
     // 处理等待队列中的数据
@@ -192,10 +191,15 @@ bool frmMain::eventFilter(QObject *watched, QEvent *event)
 
 
 // 初始化配置
-void frmMain::initializeConfig(QObject *parent) {
+void frmMain::initConfig() {
     QString filePath = QApplication::applicationDirPath()+DEFAULT_SETTING; // 配置文件路径
     g_config = new AppConfig(); // 初始化
     g_config->loadFromIni(filePath);
+
+    // 清空，准备重新加载
+    this->m_thresholdConditions.clear();
+    this->m_waitingConditions.clear();
+    this->m_packTemplateConditions.clear();
 
     // 从数据库中加载规则列表
     auto conditions = this->m_conditionBll->getRowList(nullptr);
@@ -204,6 +208,8 @@ void frmMain::initializeConfig(QObject *parent) {
             this->m_thresholdConditions.append(dto);
         } else if (dto.Type == ConditionDto::TypeEnum::waitingCondition){
             this->m_waitingConditions.append(dto);
+        }else if (dto.Type == ConditionDto::TypeEnum::packTemplateCondition){
+            this->m_packTemplateConditions.append(dto);
         }
     }
 }
@@ -224,7 +230,7 @@ void frmMain::initForm()
     this->m_conditionBll=ConditionBLL::getInstance(this); // 条件表
 
     // 加载配置（如果配置不存在就创建默认的配置文件，并保存到文件夹中；如果配置文件存在，就解析配置文件，转换为指定的class）
-    initializeConfig(this);
+    initConfig();
 
     // UI初始化
     this->initForm_UiInit();
@@ -232,8 +238,118 @@ void frmMain::initForm()
     // 数据绑定
     this->initForm_PackDataBinding();
 
+    // 配置页面数据绑定
+    this->initForm_SettingDataBinding();
+
     // socket server
     this->startSocketServer();
+}
+
+void frmMain::initForm_SettingDataBinding(){
+    // 加载数据绑定到控件，工作模式 下拉框、开启等待扫码 checkbox、加工文件导出路径 linetext
+    this->ui->cbWorkMode->setCurrentText("接收包裹数据"); // TODO 根据配置文件的值进行实际的选择
+    this->ui->isWaiting4Scan->setCheckState(g_config->getWorkConfig().isWaiting4Scan ? Qt::Checked : Qt::Unchecked); // 是否等待扫码
+    this->ui->txtHotFolderPath->setText(g_config->getDeviceConfig().importDir); // 裁纸机上的热文件夹路径
+
+    // 等待扫码的条件
+    if (g_config->getWorkConfig().isWaiting4Scan){
+        if (this->m_waitingConditions.size() > 0){
+            this->ui->txtWaiting4ScanCondition->setText(this->m_waitingConditions[0].Condition);
+        }
+    }
+
+    // 预值列表
+    this->m_tbAddValueConditionsModel = new QStandardItemModel(this);
+    this->m_tbAddValueConditionsModel->setHorizontalHeaderLabels({ "ID", "规则名称", "条件", "长度预值", "宽度预值", "高度预值"}); // 列头
+    ui->tbAddValueConditions->setModel(this->m_tbAddValueConditionsModel);
+    this->m_tbAddValueConditionsModel->setRowCount(0); // ??
+    for(int index = 0;index<this->m_thresholdConditions.length();index++)
+    {
+        auto condition = this->m_thresholdConditions[index]; // 板件
+        QList<QStandardItem*>itemList; // 成员
+        int columnIndex = 0;
+
+        // id
+        QStandardItem *idItem = new QStandardItem(QString::number(condition.ID));
+        itemList.insert(columnIndex, idItem);
+        columnIndex++;
+
+        // name
+        QStandardItem *nameItem = new QStandardItem(condition.Name);
+        nameItem->setTextAlignment(Qt::AlignCenter);
+        itemList.insert(columnIndex, nameItem);
+        columnIndex++;
+
+        // condition
+        QStandardItem *conditionItem = new QStandardItem(condition.Condition);
+        conditionItem->setTextAlignment(Qt::AlignCenter);
+        itemList.insert(columnIndex, conditionItem);
+        columnIndex++;
+
+        // length
+        QStandardItem *lengthItem = new QStandardItem(condition.lengthExpression);
+        lengthItem->setTextAlignment(Qt::AlignCenter);
+        itemList.insert(columnIndex, lengthItem);
+        columnIndex++;
+
+        // width
+        QStandardItem *widthItem = new QStandardItem(condition.widthExpression);
+        widthItem->setTextAlignment(Qt::AlignCenter);
+        itemList.insert(columnIndex, widthItem);
+        columnIndex++;
+
+        // height
+        QStandardItem *heightItem = new QStandardItem(condition.heightExpression);
+        heightItem->setTextAlignment(Qt::AlignCenter);
+        itemList.insert(columnIndex, heightItem);
+
+        this->m_tbAddValueConditionsModel->appendRow(itemList);
+    }
+    ui->tbAddValueConditions->setColumnHidden(0, true); // ID列隐藏
+    ui->tbAddValueConditions->resizeColumnsToContents(); // 根据内容调整列
+    ui->tbAddValueConditions->resizeRowsToContents(); // 这会调整行高以适应内容
+    ui->tbAddValueConditions->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch); // 其他列使用 Stretch
+
+    // 箱型列表
+    this->m_tbPackTemplateModel = new QStandardItemModel(this);
+    this->m_tbPackTemplateModel->setHorizontalHeaderLabels({ "ID", "规则名称", "条件", "箱型编号"}); // 列头
+    ui->tbBoxConditions->setModel(this->m_tbPackTemplateModel);
+    this->m_tbPackTemplateModel->setRowCount(0); // ??
+    for(int index = 0;index<this->m_packTemplateConditions.length();index++)
+    {
+        auto condition = this->m_packTemplateConditions[index];
+        QList<QStandardItem*>itemList; // 成员
+        int columnIndex = 0;
+
+        // id
+        QStandardItem *idItem = new QStandardItem(QString::number(condition.ID));
+        itemList.insert(columnIndex, idItem);
+        columnIndex++;
+
+        // name
+        QStandardItem *nameItem = new QStandardItem(condition.Name);
+        nameItem->setTextAlignment(Qt::AlignCenter);
+        itemList.insert(columnIndex, nameItem);
+        columnIndex++;
+
+        // condition
+        QStandardItem *conditionItem = new QStandardItem(condition.Condition);
+        conditionItem->setTextAlignment(Qt::AlignCenter);
+        itemList.insert(columnIndex, conditionItem);
+        columnIndex++;
+
+        // pack template
+        QStandardItem *templateItem = new QStandardItem(condition.packTemplate);
+        templateItem->setTextAlignment(Qt::AlignCenter);
+        itemList.insert(columnIndex, templateItem);
+
+        this->m_tbPackTemplateModel->appendRow(itemList);
+    }
+    ui->tbBoxConditions->setColumnHidden(0, true); // ID列隐藏
+    ui->tbBoxConditions->resizeColumnsToContents(); // 根据内容调整列
+    ui->tbBoxConditions->resizeRowsToContents(); // 这会调整行高以适应内容
+    ui->tbBoxConditions->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch); // 其他列使用 Stretch
+
 }
 
 void frmMain::initForm_PackDataBinding(bool isReload){
@@ -338,17 +454,20 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         Package currentPackage;
         currentPackage.no = newRow->data(PackBLL::No).toString();
         currentPackage.customerName = newRow->data(PackBLL::CustomerName).toString();
+        currentPackage.orderNo = newRow->data(PackBLL::OrderNo).toString();
         currentPackage.length = newRow->data(PackBLL::Length).toInt();
         currentPackage.width = newRow->data(PackBLL::Width).toInt();
         currentPackage.height = newRow->data(PackBLL::Height).toInt();
         QString createTime = newRow->data(PackBLL::CreateTime).toDateTime().toString("yyyy-MM-dd HH:mm:ss");
-        QString msg = QString("id: %1， 包裹号: %2， 长： %3， 宽： %4， 高： %5， 创建时间：%6 \n %7").
+        QString msg = QString("id: %1， 包裹号: %2， 长x宽x高， 板件 ，： %3x%4x%5， 创建时间：%6 \n 客户：%7, 订单：%8 \n %9").
                 arg(packId).
                 arg(currentPackage.no).
                 arg(currentPackage.length).
                 arg(currentPackage.width).
                 arg(currentPackage.height).
                 arg(createTime).
+                arg(currentPackage.customerName).
+                arg(currentPackage.orderNo).
                 arg(newRow->data(PackBLL::Logs).toString());
         this->ui->lblPackInfo->setText(msg);
 
@@ -574,6 +693,7 @@ void frmMain::onBtnReSendClicked()
     }
 }
 
+// 剔除板件
 void frmMain::onBtnRemovePanelClicked()
 {
     QPushButton* button = qobject_cast<QPushButton*>(sender());
@@ -943,14 +1063,14 @@ void frmMain::sendFileToHotFolder(const Package &originPackage) {
     QString packTemaplte = g_config->getPackTemplateConfig().defaultTemplate;
     QScriptEngine engine;// 执行字符串脚本
 
-    // 查找阈值
+    // 查找预值
     QString message;
-    for(const auto& threshold : this->m_thresholdConditions){
+    for(const auto& threshold : qAsConst(this->m_thresholdConditions)){
         QString script = originPackage.getScript(threshold.Condition);
 
         bool result = engine.evaluate(script).toBool();
         if (result){
-            // 基本的阈值
+            // 基本的预值
             int tLength = 0, tWidth = 0, tHeight = 0;
 
             // 表达式
@@ -970,15 +1090,10 @@ void frmMain::sendFileToHotFolder(const Package &originPackage) {
                 tHeight += tmpHeight;
             }
 
-            // 加上最终的阈值
+            // 加上最终的预值
             package.length += tLength;
             package.width += tWidth;
             package.height += tHeight;
-
-            // 箱型
-            if (!threshold.packTemplate.isEmpty()) {
-                packTemaplte = threshold.packTemplate;
-            }
 
             // 日志
             QList<QString> condtionMsgs;
@@ -1003,9 +1118,7 @@ void frmMain::sendFileToHotFolder(const Package &originPackage) {
             if (tHeight > 0){
                 resultMessages.append("height + "+QString::number(tHeight));
             }
-            if (!threshold.packTemplate.isEmpty()){
-                resultMessages.append("pack template:"+packTemaplte);
-            }
+
             qDebug() << QString("pack (%1, %2, %3x%4x%5) use ").
                         arg(QString::number(package.id),
                             package.no,
@@ -1057,7 +1170,37 @@ void frmMain::sendFileToHotFolder(const Package &originPackage) {
                     arg(condtionMsgs.join(","));
 
         }else{
-            qWarning() << key + "对应 扫码阈值为空";
+            qWarning() << key + "对应 扫码预值为空";
+        }
+    }
+
+    // 箱型规则
+    for(const auto& condition : qAsConst(this->m_packTemplateConditions)){
+        // 要使用最新的尺寸来进行计算，增加了预值后长宽高都可能会改变
+        QString script = package.getScript(condition.Condition);
+
+        bool result = engine.evaluate(script).toBool();
+        if (result){
+            // 箱型
+            if (!condition.packTemplate.isEmpty()) {
+                packTemaplte = condition.packTemplate;
+
+                qDebug() << QString("pack (%1, %2, %3x%4x%5) use ").
+                            arg(QString::number(package.id),
+                                package.no,
+                                QString::number(originPackage.length),
+                                QString::number(originPackage.width),
+                                QString::number(originPackage.height))
+                         << "pack template: " + packTemaplte;
+
+                // logs
+                message += QString("threshold name: %1, %2 ; \n").
+                        arg(condition.Name,  "pack template: " + packTemaplte);
+
+                break; // 采用逐一比对的方式，满足就使用
+                //TODO 不是很灵活，无法两个条件同时满足的情况，比如窄条必须使用特殊箱型，但是有可能这个特殊箱型做不了，要使用另外的箱型
+            }
+
         }
     }
 
@@ -1202,7 +1345,7 @@ bool frmMain::parseSocketClientData(QString message)
     // 赋值
     pack.id = newPackId;
 
-    // 检查当前包裹是否需要扫码增加阈值
+    // 检查当前包裹是否需要等待扫码 增加预值
     bool isWaitingForAction = false;
     for(const auto& waitingCondition: qAsConst(this->m_waitingConditions)){
         QString script = pack.getScript(waitingCondition.Condition);
@@ -1211,7 +1354,6 @@ bool frmMain::parseSocketClientData(QString message)
         QScriptEngine engine;
         bool result = engine.evaluate(script).toBool();
         if (result){
-
             // 日志
             QList<QString> condtionMsgs;
             condtionMsgs.append("threshold name:"+waitingCondition.Name);
@@ -1275,5 +1417,218 @@ void frmMain::processTasks()
         }
 
     }
+}
+
+void frmMain::on_btnSendConfiguration_clicked()
+{
+    try{
+        //1. 保存到配置文件
+        DeviceConfig deviceConfig = g_config->getDeviceConfig();
+        deviceConfig.importDir = this->ui->txtHotFolderPath->text();
+        g_config->setDeviceConfig(deviceConfig);
+        WorkConfig workConfig = g_config->getWorkConfig();
+        workConfig.isWaiting4Scan = this->ui->isWaiting4Scan->isChecked();
+        g_config->setWorkConfig(workConfig);
+
+        //2. 保存到规则表
+        //2.1. 扫码等待规则
+        if (workConfig.isWaiting4Scan){
+            QString condition = this->ui->txtWaiting4ScanCondition->text();
+            if (this->m_waitingConditions.size() >= 1){
+                this->m_waitingConditions[0].Condition = condition;
+            }else{
+                ConditionDto dto;
+                dto.ID = 0;
+                dto.Type = ConditionDto::TypeEnum::waitingCondition;
+                dto.Condition = condition;
+                dto.action = ConditionDto::ActionEnum::scan;
+                this->m_waitingConditions.append(dto);
+            }
+            this->m_conditionBll->createOrUpdate(m_waitingConditions[0]);
+        }
+
+        //2.2. 预值规则
+        int rowCount = this->m_tbAddValueConditionsModel->rowCount();
+        for (int row = 0; row < rowCount; ++row) {
+            int colIndex = 0;
+            QModelIndex idIndex  = this->m_tbAddValueConditionsModel->index(row, colIndex);
+            int id = this->m_tbAddValueConditionsModel->data(idIndex).toInt();
+            colIndex++;
+
+            QModelIndex nameIndex  = this->m_tbAddValueConditionsModel->index(row, colIndex);
+            QString name = this->m_tbAddValueConditionsModel->data(nameIndex).toString();
+            colIndex++;
+
+            QModelIndex conditionIndex  = this->m_tbAddValueConditionsModel->index(row, colIndex);
+            QString condition = this->m_tbAddValueConditionsModel->data(conditionIndex).toString();
+            colIndex++;
+
+            QModelIndex lengthIndex  = this->m_tbAddValueConditionsModel->index(row, colIndex);
+            QString length = this->m_tbAddValueConditionsModel->data(lengthIndex).toString();
+            colIndex++;
+
+            QModelIndex widthIndex  = this->m_tbAddValueConditionsModel->index(row, colIndex);
+            QString width = this->m_tbAddValueConditionsModel->data(widthIndex).toString();
+            colIndex++;
+
+            QModelIndex heightIndex  = this->m_tbAddValueConditionsModel->index(row, colIndex);
+            QString height = this->m_tbAddValueConditionsModel->data(heightIndex).toString();
+
+            if (id <= 0){
+                ConditionDto dto;
+                dto.ID = id;
+                dto.Name = name;
+                dto.Type = ConditionDto::TypeEnum::threshold;
+                dto.Condition = condition;
+                dto.lengthExpression = length;
+                dto.widthExpression = width;
+                dto.heightExpression = height;
+                this->m_thresholdConditions.append(dto);
+            }else{
+                for (auto& dto : this->m_thresholdConditions) {
+                    if (dto.ID == id){
+                        dto.Name = name;
+                        dto.Condition = condition;
+                        dto.lengthExpression = length;
+                        dto.widthExpression = width;
+                        dto.heightExpression = height;
+                        break;
+                    }
+                }
+            }
+        }
+        for (auto& condition : this->m_thresholdConditions) {
+            this->m_conditionBll->createOrUpdate(condition);
+        }
+
+        //2.3. 箱型规则
+        int packTableRowCount = this->m_tbPackTemplateModel->rowCount();
+        for (int row = 0; row < packTableRowCount; ++row) {
+            int colIndex = 0;
+            QModelIndex idIndex  = this->m_tbPackTemplateModel->index(row, colIndex);
+            qDebug() << this->m_tbPackTemplateModel->data(idIndex).toString();
+            int id = this->m_tbPackTemplateModel->data(idIndex).toInt();
+            colIndex++;
+
+            QModelIndex nameIndex  = this->m_tbPackTemplateModel->index(row, colIndex);
+            QString name = this->m_tbPackTemplateModel->data(nameIndex).toString();
+            colIndex++;
+
+            QModelIndex conditionIndex  = this->m_tbPackTemplateModel->index(row, colIndex);
+            QString condition = this->m_tbPackTemplateModel->data(conditionIndex).toString();
+            colIndex++;
+
+            QModelIndex packTemplateIndex  = this->m_tbPackTemplateModel->index(row, colIndex);
+            QString packTemplate = this->m_tbPackTemplateModel->data(packTemplateIndex).toString();
+
+            if (id <= 0){
+                ConditionDto dto;
+                dto.ID = id;
+                dto.Name = name;
+                dto.Type = ConditionDto::TypeEnum::packTemplateCondition;
+                dto.Condition = condition;
+                dto.packTemplate = packTemplate;
+                this->m_packTemplateConditions.append(dto);
+            }else{
+                for (auto& dto : this->m_packTemplateConditions) {
+                    if (dto.ID == id){
+                        dto.Name = name;
+                        dto.Condition = condition;
+                        dto.packTemplate = packTemplate;
+                        break;
+                    }
+                }
+            }
+        }
+        for (auto& condition : this->m_packTemplateConditions) {
+            this->m_conditionBll->createOrUpdate(condition);
+        }
+
+        //2.4. 更新配置页的数据
+        this->initConfig(); // 重新加载数据
+        this->initForm_SettingDataBinding(); // 重新做数据绑定
+
+        QMessageBox::information(this, "", "配置修改成功！");
+
+    }catch (const std::exception &e) {
+        // 处理或记录异常
+        QMessageBox::warning(this, "错误", QString("Exception caught: %s \n").arg(e.what()));
+        qFatal( "Exception caught: %s", e.what());
+    }
+}
+
+// 勾选了是否等待扫码
+void frmMain::on_isWaiting4Scan_stateChanged(int arg1)
+{
+    this->ui->txtWaiting4ScanCondition->setEnabled(arg1 == Qt::Checked);
+}
+
+
+void frmMain::on_btnInsert_AddValueCondition_clicked(bool checked)
+{
+    // 在预值列表中增加一行
+    int columnCount = this->m_tbAddValueConditionsModel->columnCount(); // 获取模型的列数
+    QList<QStandardItem*> itemList;
+    for (int i = 0; i < columnCount; ++i) {
+        itemList.append(new QStandardItem("")); // 添加一个空字符串作为项的值
+    }
+    this->m_tbAddValueConditionsModel->appendRow(itemList);
+}
+
+
+void frmMain::on_btnInsert_PackTemplateCondition_clicked(bool checked)
+{
+    // 在箱型规则列表中增加一行
+    int columnCount = this->m_tbPackTemplateModel->columnCount(); // 获取模型的列数
+    QList<QStandardItem*> itemList;
+    for (int i = 0; i < columnCount; ++i) {
+        itemList.append(new QStandardItem("")); // 添加一个空字符串作为项的值
+    }
+    this->m_tbPackTemplateModel->appendRow(itemList);
+}
+
+
+void frmMain::on_btnRemove_AddValueCondition_clicked(bool checked)
+{
+    int curRow = this->ui->tbAddValueConditions->currentIndex().row();
+    if (curRow == -1) {
+        QMessageBox::warning(this, "删除错误", "未选中行，无法删除");
+        qWarning() << "未选中行，无法删除";
+        return;
+    }
+
+    // 删除确认
+    QModelIndex idIndex  = this->m_tbAddValueConditionsModel->index(curRow, 0);
+    int id = this->m_tbAddValueConditionsModel->data(idIndex).toInt();
+    for (auto& condition : this->m_thresholdConditions) {
+        if (condition.ID == id){
+            condition.RemovedAt = QDateTime::currentDateTime();
+            break;
+        }
+    }
+    this->m_tbAddValueConditionsModel->removeRow(curRow);
+    qDebug() << QString("删除第%1行").arg(curRow + 1);
+}
+
+void frmMain::on_btnRemove_PackTemplateCondition_clicked(bool checked)
+{
+    int curRow = this->ui->tbBoxConditions->currentIndex().row();
+    if (curRow == -1) {
+        QMessageBox::warning(this, "删除错误", "未选中行，无法删除");
+        qWarning() << "未选中行，无法删除";
+        return;
+    }
+
+    // 删除确认
+    QModelIndex idIndex  = this->m_tbPackTemplateModel->index(curRow, 0);
+    int id = this->m_tbPackTemplateModel->data(idIndex).toInt();
+    for (auto& condition : this->m_packTemplateConditions) {
+        if (condition.ID == id){
+            condition.RemovedAt = QDateTime::currentDateTime();
+            break;
+        }
+    }
+    this->m_tbPackTemplateModel->removeRow(curRow);
+    qDebug() << QString("删除第%1行").arg(curRow + 1);
 }
 

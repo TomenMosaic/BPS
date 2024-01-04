@@ -155,7 +155,9 @@ struct DeviceConfig {
 // group: Work
 struct WorkConfig {
     // 工作模式
-    WorkModeEnum workMode = WorkModeEnum::board_scan;
+    WorkModeEnum workMode = WorkModeEnum::socat;
+    // 是否等待扫码，再一些特殊的条件下，需要等待扫码才可以继续处理
+    bool isWaiting4Scan = false;
     // 是否使用正则表达式
     bool isUseRegex = true;
     // 解析条码的正则表达式

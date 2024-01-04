@@ -170,7 +170,9 @@ public:
     bool appendRow(QMap<QString, QVariant> valMap);
     bool appendRow(QMap<QString, QString> valMap);
 
-    void update(QSharedPointer<Row> row, UpdateType type = SYNC);
+    void update(QSharedPointer<Row> row,
+                const QMap<QString, QVariant>& primaryKeys = QMap<QString, QVariant>(),
+                UpdateType type = SYNC);
 
     void remove(QStringList conditions = QStringList(), UpdateType type = SYNC);
 
@@ -180,6 +182,10 @@ public:
 
     int getColCount();
 
+    // 获取满足条件的所有记录总条数
+    int getTotal();
+
+    // 获取缓存的记录条数
     int getRowCount();
 
     void clear();

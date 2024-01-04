@@ -81,13 +81,13 @@ private slots:
 private:
     void initForm();
     void initForm_UiInit();
-
-    void initializeConfig(QObject *parent);
+    void initConfig();
     void initForm_PackDataBinding(bool isReload = false);
 
     //
     void initForm_PanelDataBinding(bool isReload = false);
     void initForm_PanelDataPreview();
+    void initForm_SettingDataBinding();
 
     std::tuple<int, int, int> handler4Barccode(QString barcode);
     void handler4PackBarccode();
@@ -119,6 +119,9 @@ private:
     PackBLL *m_packBll;
     PanelBLL *m_panelBll;
     ConditionBLL *m_conditionBll;
+
+    QStandardItemModel *m_tbAddValueConditionsModel;
+    QStandardItemModel *m_tbPackTemplateModel;
 
     Package m_panelsPackage;
     QList<Panel> m_panels;
@@ -164,16 +167,30 @@ private slots:
         }
     }
 
+    void on_btnSendConfiguration_clicked();
+
+    void on_isWaiting4Scan_stateChanged(int arg1);
+
+    void on_btnInsert_AddValueCondition_clicked(bool checked);
+
+    void on_btnInsert_PackTemplateCondition_clicked(bool checked);
+
+    void on_btnRemove_AddValueCondition_clicked(bool checked);
+
+    void on_btnRemove_PackTemplateCondition_clicked(bool checked);
+
 private:
     QSystemTrayIcon *trayIcon;
     Algorithm* m_algorithm;
 
     // 等待队列
     QQueue<Package> m_waitingQueue;
-    // 订单和阈值的对应关系
+    // 和预值的对应关系
     QMap<QString, DimensionThresholds> m_orderThreshold;
-    // 阈值条件列表
+    // 预值条件列表
     QList<ConditionDto> m_thresholdConditions;
+    // 箱型条件列表
+    QList<ConditionDto> m_packTemplateConditions;
     // 等待条件列表
     QList<ConditionDto> m_waitingConditions;
 

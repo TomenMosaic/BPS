@@ -83,6 +83,8 @@ public:
      */
     QSqlQuery query(QString cmd);
 
+    bool ExecSql(const QString& sql, const QMap<QString, QVariant>& params);
+
     /**
      * @description: 执行更新指令
      */

@@ -32,9 +32,10 @@ void AppConfig::loadFromIni(QString &filePath)
         return;
     }
 
-    // 从文件中读取配置
+    // 工作模式
     m_globalSettings->beginGroup("Work");
     m_workConfig.workMode = static_cast<WorkModeEnum>(m_globalSettings->value("workMode").toInt());
+    m_workConfig.isWaiting4Scan = m_globalSettings->value("isWaiting4Scan").toBool();
     m_workConfig.isUseRegex = m_globalSettings->value("isUseRegex").toBool();
     if (m_workConfig.isUseRegex && !m_workConfig.codeRegex.isEmpty()){
         m_workConfig.codeRegex = m_globalSettings->value("codeRegex").toString();
@@ -143,6 +144,7 @@ void AppConfig::save()
     // 工作模式
     m_globalSettings->beginGroup("Work");
     m_globalSettings->setValue("workMode", m_workConfig.workMode);
+    m_globalSettings->setValue("isWaiting4Scan", m_workConfig.isWaiting4Scan);
     m_globalSettings->setValue("isUseRegex", m_workConfig.isUseRegex);
     if (m_workConfig.isUseRegex && !m_workConfig.codeRegex.isEmpty()){
         m_globalSettings->setValue("codeRegex", m_workConfig.codeRegex);
@@ -270,12 +272,26 @@ void  AppConfig::setWorkConfig(WorkConfig workConfig){
         m_workConfig.codeRegex = workConfig.codeRegex;
         hasChanged = true;
     }
+    if (m_workConfig.isWaiting4Scan != workConfig.isWaiting4Scan){
+        m_workConfig.isWaiting4Scan = workConfig.isWaiting4Scan;
+        hasChanged = true;
+    }
     if (hasChanged){
         save();
     }
 }
 void  AppConfig::setBackupConfig(BackupConfig backupConfig){}
-void  AppConfig::setDeviceConfig(DeviceConfig deviceConfig){}
+void  AppConfig::setDeviceConfig(DeviceConfig deviceConfig){
+    bool hasChanged = false;
+    if (!deviceConfig.importDir.isEmpty() && m_deviceConfig.importDir != deviceConfig.importDir){
+        m_deviceConfig.importDir = deviceConfig.importDir;
+        hasChanged = true;
+    }
+
+    if (hasChanged){
+        save();
+    }
+}
 void  AppConfig::setCleanConfig(CleanConfig cleanConfig){}
 void  AppConfig::setPackTemplateConfig(PackTemplateConfig packTemplateConfig){}
 

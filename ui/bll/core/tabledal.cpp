@@ -225,6 +225,10 @@ QList<QSharedPointer<Row>> TableDAL::getRowList()
 
 QSharedPointer<Row> TableDAL::getRow(int row)
 {
+    if (row < 0 || row >= this->p_rowList.length()) {
+        // 处理无效的 row，例如记录错误、返回错误码或抛出异常
+        return this->p_rowList.at(row); // 或执行其他适当的错误处理
+    }
     assert(row>=0&&row<this->p_rowList.length());
     return this->p_rowList.at(row);
 }
@@ -355,49 +359,58 @@ bool TableDAL::appendRow(QMap<QString, QVariant> valMap)
     return false;
 }
 
-void TableDAL::update(QSharedPointer<Row>row, UpdateType type)
+void TableDAL::update(QSharedPointer<Row>row, const QMap<QString, QVariant>& primaryKeys, UpdateType type)
 {
     QMap<int,QVariant> updateList = row->getUpdateList();
-    if(!updateList.isEmpty())
-    {
-        int colCount = row->colCount();
-        QStringList conditionList;
-        for(int colIndex =0;colIndex<colCount;colIndex++)
-        {
+    if(updateList.isEmpty())
+        return;
+
+    QMap<QString, QVariant> params;
+
+    // 构建WHERE条件
+    QStringList whereConditions;
+    if (!primaryKeys.isEmpty()) {
+        for (auto it = primaryKeys.cbegin(); it != primaryKeys.cend(); ++it) {
+            QString placeholder = QString(":where_%1").arg(it.key());
+            whereConditions.append(QString("%1=%2").arg(it.key(), placeholder));
+            params.insert(placeholder, it.value());  // 在参数映射中添加值
+        }
+    } else{
+        for (int colIndex = 0; colIndex < row->colCount(); colIndex++) {
             QString fieldName = row->field(colIndex);
-            QString value = VarToString(row->data(colIndex));
-            if(value.isEmpty())
+            if (updateList.contains(colIndex)) { // 只使用需要更新的列
                 continue;
-            QString lastVar = QString("%1='%2'").arg(fieldName, value);
-            conditionList.append(lastVar);
-        }
-        QList<int>keysList = updateList.keys();
-        QStringList changeList;
-        for(int index = 0;index<keysList.length();index++)
-        {
-            int col = keysList.at(index);
-            QString fieldName = row->field(col);
-            QString value = VarToString(updateList.value(col));
-            QString lastVar = QString("%1='%2'").arg(fieldName, value);
-            changeList.append(lastVar);
-        }
-        QString cmd = QString("update %1 set %2 where %3").arg(this->p_tableName, changeList.join(","), conditionList.join(" and "));
-        if(type==SYNC)
-        {
-            QSqlQuery query = g_db->query(cmd);
-            if(query.lastError().isValid())
-            {
-                CLOG_ERROR(QString("exec cmd :%1----%2").arg(cmd, query.lastError().text()).toUtf8());
-                qWarning()<<Q_FUNC_INFO<<__LINE__<<QString("exec cmd :%1----%2").arg(cmd, query.lastError().text()).toUtf8();
             }
-            query.clear();
+            QString value = VarToString(row->data(colIndex));
+            if (!value.isEmpty()) {
+                QString placeholder = QString(":where_%1").arg(fieldName);
+                whereConditions.append(QString("%1='%2'").arg(placeholder, value));
+                params.insert(placeholder, value);  // 在参数映射中添加值
+            }
         }
-        else
-        {
-            g_db->updateCmd(cmd);
-        }
-        row->update();
     }
+
+    // 构建更新列表
+    QStringList changeList;
+    QMapIterator<int, QVariant> i(updateList);
+    while (i.hasNext()) {
+        i.next();
+        QString fieldName = row->field(i.key());
+        QString placeholder = QString(":update_%1").arg(i.key());
+        changeList.append(QString("%1=%2").arg(fieldName, placeholder));  // 将字段和占位符添加到更新列表
+        params.insert(placeholder, updateList.value(i.key()));  // 在参数映射中添加值
+    }
+
+    // sql 语句
+    QString cmd = QString("update %1 set %2 where %3").
+            arg(this->p_tableName, changeList.join(","), whereConditions.join(" and "));
+    if(type==SYNC)
+        g_db->ExecSql(cmd, params);  // 同步执行SQL
+    else
+        g_db->updateCmd(cmd);
+
+    //
+    row->update();
 }
 
 void TableDAL::remove(QStringList conditions, UpdateType type)
@@ -446,10 +459,12 @@ int TableDAL::getColCount()
     return this->p_fieldList.length();
 }
 
-int TableDAL::getRowCount()
+int TableDAL::getTotal()
 {
     // 准备 SQL 查询
     QString cmd = QString("SELECT COUNT(*) FROM %1").arg(this->p_tableName);
+    if(!this->p_conditions.isEmpty())
+        cmd += " WHERE "+ this->p_conditions.join(" and ");
 
     // 执行查询
     QSqlQuery query = g_db->query(cmd);
@@ -472,6 +487,11 @@ int TableDAL::getRowCount()
 
     // 如果查询失败或未返回结果，返回 0
     return 0;
+}
+
+int TableDAL::getRowCount()
+{
+    return this->p_rowList.size();
 }
 
 void TableDAL::calculatePagination(int pageSize, int pageIndex)
