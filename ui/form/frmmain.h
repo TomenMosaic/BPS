@@ -21,6 +21,9 @@
 #include "global.h"
 
 #include "globalhook.h"
+#include "common/CustomerStatusBar.h"
+
+#include <QMainWindow>
 
 namespace Ui {
 class frmMain;
@@ -71,10 +74,6 @@ private slots:
     void on_txtPanelBarcode_Enter();
     void on_btnSearchPlate_clicked();
 
-    // 包裹列表中的按钮
-    void onBtnReSendClicked();
-    void onBtnReprintClicked();
-
     // 板件列表中的按钮
     void onBtnRemovePanelClicked();
 
@@ -101,6 +100,8 @@ private:
 
     // 处理键盘钩子获取到的扫码数据
     void handleScannedData(const QString &data);
+
+    void handlePackTableMenuAction(QAction *action, const QModelIndex &index);
 
 private slots:
     // 开启 socket server
@@ -137,11 +138,16 @@ private:
     // 键盘钩子
     GlobalHook *m_globalHook;
 
+    // 状态栏
+    CustomStatusBar* m_customStatusBar;
+
     // 添加任务到队列
     void enqueueTask(Package& pack);
 
     // 处理队列中的任务
     void processTasks();
+
+
 
 protected:
     // 重写关闭事件

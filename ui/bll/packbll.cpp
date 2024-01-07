@@ -232,11 +232,11 @@ bool PackBLL::updateStatus(uint id, PackBLL::StatusEnum status, QString message)
                 curRow->setData(PackBLL::SentTime, now);
             }
             curRow->setData(PackBLL::LastModifyTime, now);
-            QString log = "" ;
+            QString log = curRow->data(PackBLL::Logs).toString();
             if (!message.isEmpty()){
-                log += message + "\n";
+                log += message;
             }
-            log += QString("status -> %1, at %2 \\n").arg(statusEnumToString(status), now.toString("MM-dd HH:mm:ss.mmm"));
+            log += QString("status -> %1, at %2 \n\n").arg(statusEnumToString(status), now.toString("MM-dd HH:mm:ss.mmm"));
             curRow->setData(PackBLL::Logs, log);
             dal.update(curRow);
             return true;

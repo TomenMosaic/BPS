@@ -4,6 +4,8 @@
 #include "iconhelper.h"
 #include "quihelper.h"
 
+#include "common/tableview_controller.h"
+
 #include <QList>
 #include <QScriptEngine>
 
@@ -31,16 +33,16 @@ frmMain::frmMain(QWidget *parent) : QDialog(parent),
     m_tcpServer(new QTcpServer(this)), // 使用初始化列表来初始化tcpServer
     m_webSocketServer(new QWebSocketServer(QStringLiteral("WebSocket Server"), QWebSocketServer::NonSecureMode, this)) // 使用初始化列表来初始化 web socket server
 {
-    ui->setupUi(this);
+    this->ui->setupUi(this);
     this->initForm(); // 初始化
 
     this->m_algorithm = new Algorithm(g_config->getDeviceConfig().maxLengthExceed,
                                       g_config->getDeviceConfig().maxWidthExceed,
                                       g_config->getDeviceConfig().maxWidth4Strip);
 
-    ui->txtPackBarcode->installEventFilter(this);
-    ui->txtPanelBarcode->installEventFilter(this);
-    ui->stackedWidget->installEventFilter(this);
+    this->ui->txtPackBarcode->installEventFilter(this);
+    this->ui->txtPanelBarcode->installEventFilter(this);
+    this->ui->stackedWidget->installEventFilter(this);
 
     // 键盘钩子
     this->m_globalHook = new GlobalHook();
@@ -53,6 +55,11 @@ frmMain::frmMain(QWidget *parent) : QDialog(parent),
         this->processTasks(); // 处理队列数据
     });
     timer->start(500); // 延迟500毫秒处理
+
+    // 状态栏
+    this->m_customStatusBar = new CustomStatusBar(this);
+    this->m_customStatusBar->setInfoText("就绪");   // 设置初始消息
+    this->ui->verticalLayout->addWidget(this->m_customStatusBar);
 }
 
 frmMain::~frmMain()
@@ -171,19 +178,12 @@ bool frmMain::eventFilter(QObject *watched, QEvent *event)
         if(event->type() == QEvent::KeyPress)
         {
             QKeyEvent *k = static_cast<QKeyEvent *>(event);
-            if(k->key() == Qt::Key_F5)             //选定回车键(可自行定义其他按键)
+            if(k->key() == Qt::Key_F5)
             {
                 this->initForm_PackDataBinding(true);
                 return true;
             }
         }
-
-        /* else if (event->type() == QEvent::MouseButtonDblClick) {
-            if (watched == ui->widgetTitle) {
-                on_btnMenu_Max_clicked();
-                return true;
-            }
-        }*/
     }
 
     return QWidget::eventFilter(watched, event);
@@ -349,14 +349,28 @@ void frmMain::initForm_SettingDataBinding(){
     ui->tbBoxConditions->resizeColumnsToContents(); // 根据内容调整列
     ui->tbBoxConditions->resizeRowsToContents(); // 这会调整行高以适应内容
     ui->tbBoxConditions->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch); // 其他列使用 Stretch
-
 }
+
+
+void onTreeItemClicked(QTreeWidgetItem *item, int /* column */) {
+        if (item->text(0) == "详情" || item->text(0) == "隐藏") {
+            if (item->childCount() > 0){
+                bool isHidden = item->child(0)->isHidden();
+                for (int i = 0; i < item->childCount(); ++i) {
+                    item->child(i)->setHidden(!isHidden);
+                }
+                item->setText(0, isHidden ? "隐藏" : "详情");
+            }
+
+        }
+    }
+
 
 void frmMain::initForm_PackDataBinding(bool isReload){
     ui->tvPackList->verticalHeader()->setVisible(false); // 显示表头
 
     m_packModel = new QStandardItemModel(this);
-    m_packModel->setHorizontalHeaderLabels({ "包号","尺寸", "状态"}); // 列头
+    m_packModel->setHorizontalHeaderLabels({ "ID", "包号", "尺寸", "状态"}); // 列头
     ui->tvPackList->setModel(m_packModel);
 
     m_packModel->setRowCount(0); // ??
@@ -368,10 +382,10 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         int colIndex = 0;
 
         // ID
-        /* QStandardItem *idItem = new QStandardItem(row->data(PackBLL::ID).toString());
+        QStandardItem *idItem = new QStandardItem(row->data(PackBLL::ID).toString());
         idItem->setTextAlignment(Qt::AlignCenter);
         itemList.insert(colIndex, idItem);
-        colIndex++;*/
+        colIndex++;
 
         // no
         QStandardItem *noItem = new QStandardItem(row->data(PackBLL::No).toString());
@@ -397,47 +411,14 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         itemList.insert(colIndex, statusItem);
         colIndex++;
 
-        /* // create time
-        QString strCreateTime = row->data(PackBLL::CreateTime).toDateTime().toString("MM-dd HH:mm:ss");
-        QStandardItem *createTimeItem = new QStandardItem(strCreateTime);
-        createTimeItem->setTextAlignment(Qt::AlignCenter); // 居中
-        itemList.insert(colIndex, createTimeItem);
-        colIndex++; */
-
         m_packModel->appendRow(itemList);
-
-        /* // 操作按钮：重新发送 / 打印
-        QWidget *container = new QWidget();// 创建一个容器小部件
-        QHBoxLayout *layout = new QHBoxLayout(container);// 创建一个水平布局
-        layout->setContentsMargins(3, 3, 3, 3); // 设置最小边距
-
-        // 重新发送
-        if (statusValue == PackBLL::StatusEnum::Status_Sent || statusValue == PackBLL::StatusEnum::Status_Finish){
-            QPushButton *btnReSend = new QPushButton("重新发送");
-            btnReSend->setObjectName(QString::number(row->data(PackBLL::ID).toInt()));
-            QObject::connect(btnReSend, &QPushButton::clicked, this, &frmMain::onBtnReSendClicked);
-            layout->addWidget(btnReSend);
-        }
-
-        // 打印
-        if (g_config->getPrinterConfig().isEnable){
-            QPushButton *btnReprint = new QPushButton("打印");
-            btnReprint->setObjectName(QString::number(row->data(PackBLL::ID).toInt()));
-            QObject::connect(btnReprint, &QPushButton::clicked, this, &frmMain::onBtnReprintClicked);
-            layout->addWidget(btnReprint);
-        }
-
-        layout->setAlignment(Qt::AlignCenter);
-        layout->setSizeConstraint(QLayout::SetMinAndMaxSize);
-        container->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
-        ui->tvPackList->setIndexWidget(m_packModel->index(m_packModel->rowCount()-1, colIndex), container);*/
-
     }
 
-    ui->tvPackList->resizeColumnsToContents(); // 根据内容调整列
-    ui->tvPackList->resizeRowsToContents(); // 这会调整行高以适应内容
-    ui->tvPackList->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch); // 其他列使用 Stretch
-    ui->tvPackList->horizontalHeader()->setSectionResizeMode(m_packModel->columnCount() - 1, QHeaderView::ResizeToContents); // 按钮列使用 ResizeToContents
+    this->ui->tvPackList->setColumnHidden(0, true); // ID列隐藏
+    this->ui->tvPackList->resizeColumnsToContents(); // 根据内容调整列
+    this->ui->tvPackList->resizeRowsToContents(); // 这会调整行高以适应内容
+    this->ui->tvPackList->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch); // 其他列使用 Stretch
+    this->ui->tvPackList->horizontalHeader()->setSectionResizeMode(m_packModel->columnCount() - 1, QHeaderView::ResizeToContents); // 按钮列使用 ResizeToContents
 
     // pack table
     this->ui->tvPackList->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -452,6 +433,7 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         QSharedPointer<Row> newRow = this->m_packBll->getRowList().at(rowIndex);
         int packId = newRow->data(PackBLL::ID).toInt();
         Package currentPackage;
+        currentPackage.id = newRow->data(PackBLL::ID).toInt();
         currentPackage.no = newRow->data(PackBLL::No).toString();
         currentPackage.customerName = newRow->data(PackBLL::CustomerName).toString();
         currentPackage.orderNo = newRow->data(PackBLL::OrderNo).toString();
@@ -459,7 +441,7 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         currentPackage.width = newRow->data(PackBLL::Width).toInt();
         currentPackage.height = newRow->data(PackBLL::Height).toInt();
         QString createTime = newRow->data(PackBLL::CreateTime).toDateTime().toString("yyyy-MM-dd HH:mm:ss");
-        QString msg = QString("id: %1， 包裹号: %2， 长x宽x高， 板件 ，： %3x%4x%5， 创建时间：%6 \n 客户：%7, 订单：%8 \n %9").
+        QString msg = QString("ID: %1， 包裹号: %2， 长x宽x高： %3x%4x%5， 创建时间：%6 \n 客户：%7, 订单：%8 ").
                 arg(packId).
                 arg(currentPackage.no).
                 arg(currentPackage.length).
@@ -467,9 +449,19 @@ void frmMain::initForm_PackDataBinding(bool isReload){
                 arg(currentPackage.height).
                 arg(createTime).
                 arg(currentPackage.customerName).
-                arg(currentPackage.orderNo).
-                arg(newRow->data(PackBLL::Logs).toString());
+                arg(currentPackage.orderNo);
         this->ui->lblPackInfo->setText(msg);
+
+        // 日志列表
+        QTreeWidgetItem *topItem = this->ui->treePackLogs->topLevelItem(0);
+        qDeleteAll(topItem->takeChildren()); // 清除现有的子节点
+        auto logs = newRow->data(PackBLL::Logs).toString().split("\n");
+        for (auto& log:logs) {
+            QTreeWidgetItem *childItem = new QTreeWidgetItem(topItem);
+            childItem->setText(0, log); // 设置子节点的文本
+        }
+        bool isHide = topItem->text(0).contains("隐藏");
+        topItem->setHidden(isHide); // 显示/隐藏
 
         // 查找关联的板件列表
         this->m_panels = this->m_panelBll->getPanelsByPackId(packId);
@@ -656,43 +648,6 @@ void frmMain::initForm_PanelDataPreview() {
     }
 }
 
-void frmMain::onBtnReSendClicked()
-{
-    QPushButton* button = qobject_cast<QPushButton*>(sender());
-    if (button) {
-        int id = button->objectName().toInt();
-        QList<QSharedPointer<Row>> packList = m_packBll->getRowList();
-        for(int index = 0;index<packList.length();index++)
-        {
-            QSharedPointer<Row>row = packList.at(index); // row
-
-            // 是否为对应的记录
-            int tmpId = row->data(PackBLL::ID).toInt();
-            if (tmpId != id){
-                continue;
-            }
-
-            // 包裹基本数据
-            Package pack ;
-            pack.id = id;
-            pack.no =  row->data(PackBLL::No).toString();
-            pack.length = row->data(PackBLL::Length).toInt();
-            pack.width = row->data(PackBLL::Width).toInt();
-            pack.height = row->data(PackBLL::Height).toInt();
-            pack.customerName = row->data(PackBLL::CustomerName).toString();
-
-            // 发送包裹数据
-            this->sendFileToHotFolder(pack);
-
-            // 重置数据
-            this->initForm_PackDataBinding();
-
-            break;
-        }
-
-    }
-}
-
 // 剔除板件
 void frmMain::onBtnRemovePanelClicked()
 {
@@ -700,7 +655,7 @@ void frmMain::onBtnRemovePanelClicked()
     if (button) {
         int id = button->objectName().toInt();
 
-        // 剔除某个板件，重新计算
+        // 剔除某个板重新计算
         for (QList<Panel>::iterator it = this->m_panels.begin(); it != this->m_panels.end(); ) {
             if (it->id == id) {
                 it = this->m_panels.erase(it);  // 移除元素并更新迭代器位置
@@ -716,16 +671,37 @@ void frmMain::onBtnRemovePanelClicked()
     }
 }
 
-void frmMain::onBtnReprintClicked()
-{
-    QPushButton* button = qobject_cast<QPushButton*>(sender());
-    if (button) {
-        //TODO 发送打印数据到标签打印机
+// 包裹列表
+QList<QAction*> buildMyMenu(QTableView *view, const QModelIndex &index) {
+    QList<QAction*> actions;
+    actions.append(new QAction("重新发送", view));
+    actions.append(new QAction("删除", view));
+    actions.append(new QAction("详情", view));
+    return actions;
+}
 
-        int id = button->objectName().toInt();
-        this->m_packBll->finishPrint(id);
+// 主窗体中处理菜单操作的槽函数
+void frmMain::handlePackTableMenuAction(QAction *action, const QModelIndex &index) {
+    if (!index.isValid()) {
+        return; // 确保提供的索引是有效的
+    }
 
-        this->initForm_PackDataBinding();
+    // 获取选中行的数据
+    QModelIndex idIndex  = this->m_packModel->index(index.row(), 0);
+    int packId = this->m_packModel->data(idIndex).toInt();
+
+    if (action->text() == "重新发送") {
+        if (this->m_panelsPackage.id == packId){
+            this->sendFileToHotFolder(this->m_panelsPackage);
+        } else{
+            qWarning() << QString("选中的包裹id（%1） != 缓存包裹id（%2）").
+                          arg(QString::number(packId), QString::number(this->m_panelsPackage.id));
+        }
+
+    } else if (action->text() == "删除") {
+        // 处理操作2
+    } else if (action->text() == "详情") {
+        // 处理操作2
     }
 }
 
@@ -802,6 +778,14 @@ void frmMain::initForm_UiInit(){
 
     // 默认选中第一个菜单
     ui->btnMenuPack->click();
+
+    // 创建 MyController 实例
+    QTableViewController *controller = new QTableViewController(this->ui->tvPackList, buildMyMenu);
+    connect(controller, &QTableViewController::menuActionTriggered, this, &frmMain::handlePackTableMenuAction);
+
+    // 为日志详情绑定点击事件
+    this->ui->treePackLogs->setHeaderHidden(true);
+    //connect(this->ui->treePackLogs, &QTreeWidget::itemClicked, this, onTreeItemClicked);
 }
 
 /*
@@ -953,7 +937,7 @@ void frmMain::handler4PanelBarccode()
                                           [](const Panel &a, const Panel &b) { return a.id < b.id; });
             id = maxIt->id + 1;
         }
-        Panel panel(id, length, width, height, "");
+        Panel panel(id, length, width, height, "", "");
         this->m_panels.append(panel);
 
         // 清空input
@@ -1315,6 +1299,7 @@ bool frmMain::parseSocketClientData(QString message)
     QJsonObject jsonObj = document.object();
     QString packNo = jsonObj.value("ID").toString();
     QString customerName = jsonObj.value("CustomerName").toString();
+    QString orderNo = jsonObj.value("OrderNo").toString();
 
     // 处理Panel列表字段
     QList<Panel> panels;
@@ -1329,6 +1314,8 @@ bool frmMain::parseSocketClientData(QString message)
             panel.height = panelObj.value("Height").toInt();
             panel.name = panelObj.value("Name").toString();
             panel.remark = panelObj.value("Remark").toString();
+            panel.location = panelObj.value("Location").toString();
+            panel.sculpt = panelObj.value("Sculpt").toString();
             panels.append(panel); // 添加到列表
         }
     }
@@ -1337,6 +1324,7 @@ bool frmMain::parseSocketClientData(QString message)
     Package pack = this->m_algorithm->createLayers(panels);
     pack.no = packNo;
     pack.customerName = customerName;
+    pack.orderNo = orderNo;
 
     // 创建包裹数据
     int newPackId = this->m_packBll->insertByPackStruct(pack);

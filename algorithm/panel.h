@@ -33,14 +33,17 @@ public:
     int layerNumber; // 板件所在的层
     QPoint position; // 板件在层中的坐标（x, y）
     bool rotated; // 板件是否被旋转
+    QString location; // 位置，比如主卧衣柜、客厅鞋柜
+    QString sculpt; // 特殊工艺
 
-    Panel(int id, int length, int width, int height, QString remark)
-        : id(id), length(length), width(width), height(height), remark(remark),
+    Panel(int id, int length, int width, int height, QString name, QString remark)
+        : id(id), length(length), width(width), height(height), remark(remark), name(name),
           createTime(QDateTime::currentDateTime()),
           layerNumber(0), position(0, 0), rotated(false) {}
 
     Panel()
-        : length(0), width(0), height(0), remark(""),
+        : length(0), width(0), height(0),
+          name(""), remark(""), location(""), sculpt(""),
           createTime(QDateTime::currentDateTime()),
           layerNumber(0), position(0, 0), rotated(false){
 
@@ -50,7 +53,8 @@ public:
     Panel(const Panel& other)
         : id(other.id), externalId(other.externalId), no(other.no),
           length(other.length), width(other.width), height(other.height),
-          name(other.name), remark(other.remark), createTime(other.createTime),
+          name(other.name), remark(other.remark), location(other.location), sculpt(other.sculpt),
+          createTime(other.createTime),
           layerNumber(other.layerNumber), position(other.position), rotated(other.rotated) {
     }
 
@@ -68,6 +72,8 @@ public:
             layerNumber = other.layerNumber;
             position = other.position;
             rotated = other.rotated;
+            location = other.location;
+            sculpt = other.sculpt;
         }
         return *this;
     }

@@ -17,8 +17,7 @@ public:
     QString customerName;
     // 订单号
     QString orderNo;
-    // 安装所在的位置，比如客厅鞋柜、卧室衣柜
-    QString location;
+
     QList<Layer> layers;
     // 是否需要扫码确认
     bool needsScanConfirmation = false;
@@ -32,7 +31,7 @@ public:
     Package(const Package& other)
         : id(other.id), length(other.length), width(other.width),
           height(other.height), no(other.no), customerName(other.customerName),
-          orderNo(other.orderNo), location(other.location),
+          orderNo(other.orderNo),
           layers(other.layers), // 假定Layer也实现了深拷贝
           needsScanConfirmation(other.needsScanConfirmation),
           pendingScan(other.pendingScan) {
@@ -49,7 +48,6 @@ public:
             no = other.no;
             customerName = other.customerName;
             orderNo = other.orderNo;
-            location = other.location;
             layers = other.layers; // 假定Layer也实现了深拷贝
             needsScanConfirmation = other.needsScanConfirmation;
             pendingScan = other.pendingScan;
@@ -123,31 +121,48 @@ public:
         if (! this->customerName.isEmpty()){
             script = script.replace("{CustomerName}", this->customerName);
         }
-        script = script.replace("{LayerCount}", QString::number(this->layers.size()));
-        script = script.replace("{PackageHeight}", QString::number(this->height));
-        script = script.replace("{PackageWidth}", QString::number(this->width));
+        if (! this->orderNo.isEmpty()){
+            script = script.replace("{OrderNo}", this->orderNo);
+        }
+        script = script.replace("{LayerCount}", QString::number(this->layers.size())); // 层数
+        script = script.replace("{PackageHeight}", QString::number(this->height)); // 包裹高度
+        script = script.replace("{PackageWidth}", QString::number(this->width)); // 包裹宽度
+        script = script.replace("{PackageLength}", QString::number(this->length)); // 包裹长度
 
-        // 包含板件名称列表
+        // 包含板件名称、说明、位置、特殊工艺列表
         QSet<QString> panelNameSet; // name
         QSet<QString> panelRemarkSet; // remark
+        QSet<QString> panelLocationSet; // 位置
+        QSet<QString> panelSculptSet; // 工艺
         for (const Layer& layer: qAsConst(layers)){
             for (const Panel& panel: qAsConst(layer.panels)){
                 panelNameSet.insert(panel.name);
                 panelRemarkSet.insert(panel.remark);
+                panelLocationSet.insert(panel.location);
+                panelSculptSet.insert(panel.sculpt);
             }
         }
         script = script.replace("{PanelNames}", panelNameSet.toList().join(","));
         script = script.replace("{PanelRemarks}", panelRemarkSet.toList().join(","));
+        script = script.replace("{PanelLocations}", panelLocationSet.toList().join(","));
+        script = script.replace("{PanelSculpts}", panelSculptSet.toList().join(","));
 
         return script;
     }
 
     QString getKey() const{
+        QSet<QString> panelLocationSet; // 位置
+        for (const Layer& layer: qAsConst(layers)){
+            for (const Panel& panel: qAsConst(layer.panels)){
+                panelLocationSet.insert(panel.location);
+            }
+        }
+
         QString result ;
-        if (customerName.isEmpty() && location.isEmpty()){
+        if (customerName.isEmpty() && panelLocationSet.isEmpty()){
             result = no;
         }else{
-            result = QString("%1_%2").arg(customerName, location);
+            result = QString("%1_%2").arg(customerName, panelLocationSet.toList().join(","));
         }
         return result;
     }
