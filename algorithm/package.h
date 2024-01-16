@@ -12,12 +12,22 @@ public:
     int length;
     int width;
     int height;
+
+    // 包裹条码
     QString no;
     // 客户名称
     QString customerName;
     // 订单号
     QString orderNo;
+    // 流水号（一个订单分组里面的第几包）
+    int flowNo;
 
+    // 已扫码的板件数据
+    int scanPanelCount;
+    // 包裹中板件的总数量
+    //int panelTotal;
+
+    // 层列表
     QList<Layer> layers;
     // 是否需要扫码确认
     bool needsScanConfirmation = false;
@@ -164,6 +174,32 @@ public:
         }else{
             result = QString("%1_%2").arg(customerName, panelLocationSet.toList().join(","));
         }
+        return result;
+    }
+
+    QList<Panel> getPanels() const{
+        QList<Panel> panels;
+        for (auto& layer : this->layers){
+            panels.append(layer.panels);
+        }
+        return panels;
+    }
+
+    int getPanelTotal() const{
+        int result;
+        for (auto& layer : this->layers){
+            result += layer.panels.size();
+        }
+        return result;
+    }
+
+    QString createNo(int flowNo) const{
+        QString format = "P{OrderNo}{FlowNo}";
+        //QDateTime now = QDateTime::currentDateTime();
+
+        QString result = format.replace("{OrderNo}", orderNo)
+                               .replace("{FlowNo}", QString("%1").arg(flowNo, 3, 10, QChar('0'))); // 假设flowNo是5位数，不足前面补0
+
         return result;
     }
 

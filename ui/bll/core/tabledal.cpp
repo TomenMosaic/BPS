@@ -25,6 +25,15 @@ bool TableDAL::reload()
     return reload(0, 0);
 }
 
+bool TableDAL::reload(int pageSize, int pageIndex, QStringList conditions, QStringList orders){
+    this->p_conditions = conditions;
+    if (orders.size() > 0){
+        this->p_orders = orders;
+    }    
+
+    return reload(pageSize, pageIndex);
+}
+
 void TableDAL::checkAndCreateTable(QString tableName, const QList<DataTableColumn> dbColumnList){
     QStringList strs;
     for (int i = 0; i < dbColumnList.length(); i ++){
@@ -144,9 +153,7 @@ void TableDAL::initTable(QString tableName, QStringList fieldList,
     this->p_conditions = conditions;
     this->p_orders=orders;
     if(load)
-    {
         this->reload(pageSize, pageIndex);
-    }
 }
 
 void TableDAL::initTable(QString tableName, QStringList fieldList,
@@ -496,7 +503,8 @@ int TableDAL::getRowCount()
 
 void TableDAL::calculatePagination(int pageSize, int pageIndex)
 {
-    if (pageSize <= 0 && pageIndex < 0) {
+    if (pageSize <= 0 && pageIndex <= 0) {
+        this->p_pageinationInfo = nullptr;
         return;
     }
 

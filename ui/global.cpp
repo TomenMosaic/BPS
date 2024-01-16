@@ -137,6 +137,15 @@ void AppConfig::loadFromIni(QString &filePath)
     m_packTemplateConfig.isUtilization = m_globalSettings->value("isUtilization").toBool();
     m_packTemplateConfig.defaultTemplate = m_globalSettings->value("defaultTemplate").toString();
     m_globalSettings->endGroup();
+
+    // 预分包
+    m_globalSettings->beginGroup("YFB");
+    m_prePackConfig.isOpen = m_globalSettings->value("isOpen").toBool();
+    if ( m_prePackConfig.isOpen){
+        m_prePackConfig.setTemplate(m_globalSettings->value("importTemplate").toString(), true);
+        m_prePackConfig.setTemplate(m_globalSettings->value("exportTemplate").toString(), false);
+    }
+    m_globalSettings->endGroup();
 }
 
 void AppConfig::save()
@@ -225,6 +234,13 @@ void AppConfig::save()
     m_globalSettings->setValue("defaultTemplate", m_packTemplateConfig.defaultTemplate);
     m_globalSettings->endGroup();
 
+    // 预分包
+    m_globalSettings->beginGroup("YFB");
+    m_globalSettings->setValue("isSort", m_prePackConfig.isOpen);
+    m_globalSettings->setValue("importTemplate", m_prePackConfig.importTemplate);
+    m_globalSettings->setValue("exportTemplate", m_prePackConfig.exportTemplate);
+    m_globalSettings->endGroup();
+
     // 确保设置被写入文件
     m_globalSettings->sync();
 
@@ -256,6 +272,10 @@ CleanConfig  AppConfig::getCleanConfig(){
 }
 PackTemplateConfig  AppConfig::getPackTemplateConfig(){
     return m_packTemplateConfig;
+}
+
+YFBConfig AppConfig::getPrePackConfig(){
+    return m_prePackConfig;
 }
 
 void  AppConfig::setWorkConfig(WorkConfig workConfig){
@@ -294,5 +314,38 @@ void  AppConfig::setDeviceConfig(DeviceConfig deviceConfig){
 }
 void  AppConfig::setCleanConfig(CleanConfig cleanConfig){}
 void  AppConfig::setPackTemplateConfig(PackTemplateConfig packTemplateConfig){}
+
+void AppConfig::setPrePackConfig(YFBConfig yfbConfig){
+    bool hasChanged = false;
+
+    // 检查并更新 isOpen
+    if (this->m_prePackConfig.isOpen != yfbConfig.isOpen) {
+        this->m_prePackConfig.isOpen = yfbConfig.isOpen;
+        hasChanged = true;
+    }
+
+    // 如果配置是开启状态，检查模板是否更改
+    if (yfbConfig.isOpen) {
+        if (this->m_prePackConfig.importTemplate != yfbConfig.importTemplate) {
+            this->m_prePackConfig.importTemplate = yfbConfig.importTemplate;
+            hasChanged = true;
+        }
+        if (this->m_prePackConfig.exportTemplate != yfbConfig.exportTemplate) {
+            this->m_prePackConfig.exportTemplate = yfbConfig.exportTemplate;
+            hasChanged = true;
+        }
+    }
+
+    // 如果有更改，则保存配置
+    if (hasChanged) {
+        save();
+    }
+}
+
+
+
+
+
+
 
 

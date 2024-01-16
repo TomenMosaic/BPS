@@ -5,6 +5,10 @@
 #include "log.h"
 #include "core/database.h"
 
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+
 constexpr auto DEFAULT_SETTING = "/.config/setting.ini";
 constexpr auto DEFAULT_DATABASE = "/.config/packdata";
 constexpr auto DEFAULT_DATABASE_PASSWORD = "Pps@666!";
@@ -121,29 +125,6 @@ struct DeviceConfig {
     // 目标设备的热文件夹
     QString importDir = "E:\\Dropfolder";
 
-    // 阈值配置列表
-    // group: Thresholds
-    /*
-    [Thresholds]
-    count=2
-
-    [Thresholds/1]
-    condition=Condition1
-    length=100
-    width=200
-    height=300
-
-    [Thresholds/2]
-    condition=Condition2
-    length=400
-    width=500
-    height=600
-
-    QList<Threshold> thresholds;
-
-    // 等待的条件列表
-    QList<WaitingCondition> waitingConditions;*/
-
     // 单层可超出的长度
     int maxLengthExceed = 50;
     // 单层可超出的宽度
@@ -171,6 +152,119 @@ struct WorkConfig {
     int socketPort = 6061;
 };
 
+/**
+ * @brief ColumnMapping 结构体用于描述Excel文件中的列映射。
+ */
+struct ColumnMapping {
+    int columnNumber;       ///< Excel中的列号
+    QString propertyName;   ///< 对应的属性名称
+    QString dataType;       ///< 数据类型（如"Int", "String"等）
+};
+
+/**
+ * @brief 预分包的的配置
+ */
+class YFBConfig {
+public:
+    /**
+     * @brief 构造函数，初始化默认导入映射。
+     */
+    YFBConfig() {
+        // 设置默认的importMappingsCache
+        m_importMappingsCache = {
+            {1, "no", "String"},
+            {2, "name", "String"},
+            {3, "remark", "String"},
+            {4, "orderNo", "String"},
+            {5, "customerName", "String"},
+            {6, "location", "String"},
+            {7, "length", "Int"},
+            {8, "width", "Int"},
+            {9, "height", "Int"},
+            {11, "sculpt", "String"},
+        };
+    }
+
+    bool isOpen = true;           ///< 是否开启预分包功能
+    QString importTemplate;       ///< 导入数据的JSON模板字符串
+    QString exportTemplate;       ///< 导出数据的JSON模板字符串
+
+    /**
+     * @brief 设置导入或导出模板字符串，并更新缓存。
+     * @param templateStr 模板的JSON字符串。
+     * @param isImport 如果为true，则设置导入模板；否则，设置导出模板。
+     */
+    void setTemplate(const QString &templateStr, bool isImport) {
+        if (isImport) {
+            importTemplate = templateStr;
+            m_importMappingsCache = parseTemplate(templateStr);
+        } else {
+            exportTemplate = templateStr;
+            m_exportMappingsCache = parseTemplate(templateStr);
+        }
+    }
+
+    /**
+     * @brief 获取导入映射列表。
+     * @return 返回导入映射的列表。
+     */
+    QList<ColumnMapping> getImportMappings() const {
+        return m_importMappingsCache;
+    }
+
+    /**
+     * @brief 获取导出映射列表。
+     * @return 返回导出映射的列表。
+     */
+    QList<ColumnMapping> getExportMappings() const {
+        return m_exportMappingsCache;
+    }
+
+private:
+    /**
+     * @brief 解析JSON模板字符串为映射列表。
+     * @param templateStr 模板的JSON字符串。
+     * @return 返回解析后的映射列表。
+     */
+    QList<ColumnMapping> parseTemplate(const QString &templateStr) {
+        QList<ColumnMapping> mappings;
+        QJsonDocument doc = QJsonDocument::fromJson(templateStr.toUtf8());
+        QJsonArray jsonArray = doc.array();
+
+        for (const QJsonValue &value : jsonArray) {
+            QJsonObject jsonObj = value.toObject();
+            ColumnMapping mapping;
+            mapping.columnNumber = jsonObj["columnNumber"].toInt();
+            mapping.propertyName = jsonObj["propertyName"].toString();
+            mapping.dataType = jsonObj["dataType"].toString();
+            mappings.append(mapping);
+        }
+        return mappings;
+    }
+
+    /**
+     * @brief 将映射列表序列化为JSON模板字符串。
+     * @param mappings 映射列表。
+     * @return 返回序列化后的JSON模板字符串。
+     */
+    QString serializeTemplate(const QList<ColumnMapping> &mappings) {
+        QJsonArray jsonArray;
+        for (const ColumnMapping &mapping : mappings) {
+            QJsonObject jsonObj;
+            jsonObj["columnNumber"] = mapping.columnNumber;
+            jsonObj["propertyName"] = mapping.propertyName;
+            jsonObj["dataType"] = mapping.dataType;
+            jsonArray.append(jsonObj);
+        }
+        QJsonDocument doc(jsonArray);
+        return QString(doc.toJson(QJsonDocument::Compact));
+    }
+
+    // 缓存
+    QList<ColumnMapping> m_importMappingsCache;
+    QList<ColumnMapping> m_exportMappingsCache;
+};
+
 // group：Clean
 struct CleanConfig {
     // 是否启用清洗
@@ -191,6 +285,7 @@ private:
     BackupConfig m_backupConfig;
     DeviceConfig m_deviceConfig;
     CleanConfig m_cleanConfig;
+    YFBConfig m_prePackConfig;
 
     //
     QSettings *m_globalSettings;
@@ -219,6 +314,8 @@ public:
     CleanConfig getCleanConfig();
     // 获取箱型配置
     PackTemplateConfig getPackTemplateConfig();
+    // 获取预分包的配置
+    YFBConfig getPrePackConfig();
 
     // 设置打印机配置
     void setPrinterConfig(PrinterConfig printerConfig);
@@ -232,6 +329,8 @@ public:
     void setCleanConfig(CleanConfig cleanConfig);
     // 设置箱型配置
     void setPackTemplateConfig(PackTemplateConfig stockBinConfig);
+    // 设置预分包的配置
+    void setPrePackConfig(YFBConfig yfbConfig);
 
 };
 

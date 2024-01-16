@@ -264,7 +264,7 @@
       <string notr="true"/>
      </property>
      <property name="currentIndex">
-      <number>0</number>
+      <number>2</number>
      </property>
      <widget class="QWidget" name="pack">
       <layout class="QGridLayout" name="gridLayout_3" columnstretch="3,7">
@@ -282,6 +282,12 @@
          </item>
          <item row="0" column="1">
           <layout class="QVBoxLayout" name="verticalLayout_11">
+           <property name="spacing">
+            <number>0</number>
+           </property>
+           <property name="sizeConstraint">
+            <enum>QLayout::SetMaximumSize</enum>
+           </property>
            <item>
             <widget class="QLabel" name="lblPackInfo">
              <property name="text">
@@ -295,10 +301,22 @@
            <item>
             <widget class="QTreeWidget" name="treePackLogs">
              <property name="sizePolicy">
-              <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+              <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
                <horstretch>0</horstretch>
                <verstretch>0</verstretch>
               </sizepolicy>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>60</height>
+              </size>
+             </property>
+             <property name="baseSize">
+              <size>
+               <width>0</width>
+               <height>60</height>
+              </size>
              </property>
              <property name="styleSheet">
               <string notr="true">background-color: rgba(255, 255, 255, 0);
@@ -308,6 +326,12 @@ gridline-color: rgba(255, 255, 255, 0);
 selection-color: rgb(0, 0, 0);</string>
              </property>
              <property name="itemsExpandable">
+              <bool>true</bool>
+             </property>
+             <property name="allColumnsShowFocus">
+              <bool>false</bool>
+             </property>
+             <property name="headerHidden">
               <bool>true</bool>
              </property>
              <column>
@@ -344,7 +368,7 @@ selection-color: rgb(0, 0, 0);</string>
          <item row="2" column="0" colspan="2">
           <widget class="QTabWidget" name="tabPanelData">
            <property name="currentIndex">
-            <number>0</number>
+            <number>1</number>
            </property>
            <property name="documentMode">
             <bool>false</bool>
@@ -409,6 +433,9 @@ selection-color: rgb(0, 0, 0);</string>
         <layout class="QVBoxLayout" name="verticalLayout_2">
          <item>
           <widget class="QLineEdit" name="txtPackBarcode">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
            <property name="text">
             <string/>
            </property>
@@ -673,6 +700,21 @@ background-color: rgb(255, 85, 127);</string>
      </widget>
      <widget class="QWidget" name="yfb">
       <layout class="QVBoxLayout" name="verticalLayout_4">
+       <property name="spacing">
+        <number>2</number>
+       </property>
+       <property name="leftMargin">
+        <number>2</number>
+       </property>
+       <property name="topMargin">
+        <number>2</number>
+       </property>
+       <property name="rightMargin">
+        <number>2</number>
+       </property>
+       <property name="bottomMargin">
+        <number>2</number>
+       </property>
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout">
          <item>
@@ -689,35 +731,107 @@ background-color: rgb(255, 85, 127);</string>
           </spacer>
          </item>
          <item>
-          <widget class="QPushButton" name="pushButton">
+          <widget class="QPushButton" name="btnImport">
            <property name="text">
             <string>导入数据</string>
            </property>
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="pushButton_2">
+          <widget class="QPushButton" name="btnAlgorithm">
            <property name="text">
             <string>计算</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton">
+           <property name="text">
+            <string>确认</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnExport">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
+           <property name="text">
+            <string> 导出分包结果</string>
            </property>
           </widget>
          </item>
         </layout>
        </item>
        <item>
-        <widget class="QTabWidget" name="tabWidget">
+        <widget class="QTabWidget" name="tabYFB">
          <property name="currentIndex">
-          <number>0</number>
+          <number>1</number>
          </property>
+         <widget class="QWidget" name="tab_3">
+          <attribute name="title">
+           <string>分包规则</string>
+          </attribute>
+         </widget>
          <widget class="QWidget" name="tab">
           <attribute name="title">
            <string>导入数据</string>
           </attribute>
+          <layout class="QHBoxLayout" name="horizontalLayout_8">
+           <property name="spacing">
+            <number>2</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QTableView" name="tbImportPanels"/>
+           </item>
+          </layout>
          </widget>
          <widget class="QWidget" name="tab_2">
           <attribute name="title">
            <string>计算结果</string>
           </attribute>
+          <layout class="QHBoxLayout" name="horizontalLayout_7" stretch="3,7">
+           <property name="spacing">
+            <number>2</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QTableView" name="tvAlgorithmPackages"/>
+           </item>
+           <item>
+            <layout class="QVBoxLayout" name="verticalLayout_12" stretch="2,8">
+             <item>
+              <widget class="QTableView" name="tvAlgorithmPanels"/>
+             </item>
+             <item>
+              <widget class="QTabWidget" name="tabWidget_2"/>
+             </item>
+            </layout>
+           </item>
+          </layout>
          </widget>
         </widget>
        </item>

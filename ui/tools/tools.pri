@@ -3,6 +3,7 @@ INCLUDEPATH += $$PWD
 #include($$PWD/basewindow/basewindow.pri)
 
 HEADERS += \
+    $$PWD/ExcelReader.h \
     $$PWD/configmanage.h \
     $$PWD/convert.h \
     $$PWD/globalhook.h \

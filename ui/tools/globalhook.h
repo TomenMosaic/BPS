@@ -27,6 +27,8 @@ private:
     static LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam); // 键盘事件处理回调函数
     static GlobalHook *instance; // 该类的实例指针
     // static bool isInputBegin; // 添加一个标志变量
+
+    bool isActiveScan = false; // 添加一个成员变量来跟踪扫描状态
 };
 
 #endif // GLOBALHOOK_H

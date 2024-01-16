@@ -16,7 +16,7 @@ class PackBLL : public QObject
     Q_OBJECT
 
 public:
-    enum PackType
+    enum PackColEnum
     {
         ID,
         Length,
@@ -25,12 +25,21 @@ public:
         // 模板名称
         TemplateName,
         Status,
-        // 箱子的编码
+        // 箱子的编码，预分包时会由当前系统生成
         No,
         // 关联的订单号
         OrderNo,
+        // 客户名称
         CustomerName,
+        // 类型
         Type,
+        // 已扫码的板件数据
+        ScanPanelCount,
+        // 包裹中板件的总数量
+        PanelTotal,
+        // 所在格（订单中包裹的序号）
+        FlowNo,
+
         Logs,
         SentTime,
         CreateTime,
@@ -49,6 +58,11 @@ public:
         {"order_no", "TEXT"},
         {"customer_name", "TEXT"},
         {"type", "INTEGER"},
+
+        {"scan_panel_count", "INTEGER"},
+        {"panel_total", "INTEGER"},
+        {"flow_no", "INTEGER"},
+
         {"logs", "TEXT"},
         {"sent_at", "DATETIME"},
         {"create_at", "DATETIME"},
@@ -58,6 +72,8 @@ public:
 
     enum StatusEnum{
         Status_Init = 0,
+        // 齐套
+        Status_Full = 9,
         // 计算结束
         Status_Calculated = 19,
         // 等待扫码
@@ -74,8 +90,8 @@ public:
         PrintStatus_Printed = 9
     };
     enum PackTypeEnum{
-        // 扫码框中录入（手动/扫码）
-        PackType_Input = 0,
+        // 预分包（数据已经存在于当前数据库中）
+        PackType_PrePackaging = 0,
         // socket server 获取到的数据
         PackType_Socket = 1,
     };
@@ -100,7 +116,11 @@ public:
 
     void init();
 
-    QList<QSharedPointer<Row>> getRowList(bool isReload = false);
+    //QList<QSharedPointer<Row>> getRowList(bool isReload = false);
+
+    QList<QSharedPointer<Row>> getList(QString orderNo = "");
+
+    QList<QSharedPointer<Row>> getCacheList();
 
     //
     Package getPackageByDbId(uint packId);
@@ -117,7 +137,7 @@ public:
      */
     int insert(QString no, uint length, uint width, uint height, PackTypeEnum type);
 
-    int insertByPackStruct(const Package& package);
+    int insertByPackStruct(const Package& package, PackTypeEnum packType = PackTypeEnum::PackType_Socket);
 
     /**
      * @description: 更新数据
@@ -149,6 +169,9 @@ public:
     bool sentToPrinter(uint id);
 
     bool finishPrint(uint id);
+
+    // 完成了扫码
+    bool panelScanned(QString upi);
 
     static PackBLL *getInstance(QObject *parent = nullptr);
 

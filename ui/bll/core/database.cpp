@@ -375,7 +375,7 @@ DataBasePrivate::DataBasePrivate(QObject *parent):QThread(parent)
 
 void DataBasePrivate::run()
 {
-    QString connectionName = "insertSQL";
+    //QString connectionName = "insertSQL";
     QSqlDatabase db;
     if (!QSqlDatabase::contains("insertSQL"))
         db = QSqlDatabase::addDatabase("QSQLITE","insertSQL");  //第一次打开数据库时，连接数据库。

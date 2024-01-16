@@ -4,6 +4,7 @@ greaterThan(QT_MAJOR_VERSION, 5): QT += core5compat
 QT += network websockets
 QT += sql
 QT += script
+QT += axcontainer
 
 TARGET      = bps
 TEMPLATE    = app
@@ -38,3 +39,10 @@ include ($$PWD/bll/bll.pri)
 
 INCLUDEPATH += $$PWD/../algorithm
 include ($$PWD/../algorithm/algorithm.pri)
+
+# QXlsx
+INCLUDEPATH += $$PWD/../plugin/QXlsx-1.4.6/QXlsx/header
+include ($$PWD/../plugin/QXlsx-1.4.6/QXlsx/QXlsx.pri)
+
+# qt speesh
+QT += texttospeech

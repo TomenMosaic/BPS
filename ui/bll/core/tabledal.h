@@ -89,7 +89,9 @@ public:
      * @return {*}
      */
     bool reload(int pageSize, int pageIndex);
-    // bool reload(int beginNum, int endNum, const QString& orderBy = QString());
+
+
+    bool reload(int pageSize, int pageIndex, QStringList conditions, QStringList orders);
 
     /**
      * @description: 初始化表格

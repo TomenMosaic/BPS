@@ -40,6 +40,8 @@ QString PackBLL::statusEnumToString(StatusEnum status){
     switch (status) {
     case Status_Init:
         return QStringLiteral("初始化");
+    case Status_Full:
+        return QStringLiteral("齐套");
     case Status_Calculated:
         return QStringLiteral("计算结束");
     case Status_WaitingForScan:
@@ -59,11 +61,21 @@ void PackBLL::checkAndCreateTable(){
     this->dal.checkAndCreateTable(this->tableName, this->dbColumnList);
 }
 
-QList<QSharedPointer<Row>> PackBLL::getRowList(bool isReload)
+QList<QSharedPointer<Row>> PackBLL::getList(QString orderNo)
 {
-    if (isReload){
-        dal.reload();
+    QStringList wheres;
+    if (!orderNo.isEmpty()){
+        wheres.append(QString("%1='%2'")
+                .arg(this->dbColumnNames[PackColEnum::OrderNo])
+                .arg(orderNo));
     }
+
+    dal.reload(0, 0, wheres, QStringList());
+    return dal.getRowList();
+}
+
+QList<QSharedPointer<Row>> PackBLL::getCacheList()
+{
     return dal.getRowList();
 }
 
@@ -84,7 +96,7 @@ int PackBLL::insert(QString no, uint length, uint width, uint height, PackTypeEn
     return newId;
 }
 
-int PackBLL::insertByPackStruct(const Package& package){
+int PackBLL::insertByPackStruct(const Package& package, PackTypeEnum packType){
 
     QSqlDatabase db = QSqlDatabase::database();
     db.transaction();
@@ -98,10 +110,15 @@ int PackBLL::insertByPackStruct(const Package& package){
         QMap<QString,QVariant> mapList;
         mapList.insert(this->dbColumnNames.at(No),package.no);
         mapList.insert(this->dbColumnNames.at(CustomerName),package.customerName);
+        mapList.insert(this->dbColumnNames.at(CustomerName),package.orderNo);
         mapList.insert(this->dbColumnNames.at(Length),package.length);
         mapList.insert(this->dbColumnNames.at(Width),package.width);
         mapList.insert(this->dbColumnNames.at(Height),package.height);
-        mapList.insert(this->dbColumnNames.at(Type),PackBLL::PackType_Socket); //TODO, 此种方式不一定是Socket
+        mapList.insert(this->dbColumnNames.at(Type), packType);
+        if (packType == PackTypeEnum::PackType_PrePackaging){
+            mapList.insert(this->dbColumnNames.at(FlowNo), package.flowNo);
+        }
+        mapList.insert(this->dbColumnNames.at(PanelTotal), package.getPanelTotal());
         mapList.insert(this->dbColumnNames.at(Status),QString::number(Status_Init));
         QDateTime currentTime = QDateTime::currentDateTime();
         QString formattedTime = currentTime.toString("yyyy-MM-dd HH:mm:ss.zzz");
@@ -134,6 +151,7 @@ int PackBLL::insertByPackStruct(const Package& package){
                 QMap<QString, QVariant> panelMapList;
                 panelMapList.insert("pack_id", newPackId);
                 panelMapList.insert("name", panel.name);
+                panelMapList.insert("no", panel.no);
                 panelMapList.insert("remark", panel.remark);
                 panelMapList.insert("external_id", panel.externalId);
                 panelMapList.insert("layer", panel.layerNumber);
@@ -219,6 +237,84 @@ bool PackBLL::sentToPrinter(uint id){
 bool PackBLL::finishPrint(uint id){
     return true;
 }
+
+bool PackBLL::panelScanned(QString upi){
+    auto panelBll = PanelBLL::getInstance(nullptr);
+
+    // 查找upi关联的板件数据
+    auto panel = panelBll->getSingleByUPI(upi);
+    if (panel == nullptr){
+        qWarning()  << upi << " 对应板件数据为空";
+        return false;
+    }
+    if (panel->isScaned){
+        qWarning() << upi << " 已经完成扫码";
+        return false;
+    }
+    auto packId = panel->dbPackId;
+
+    // 更新panel表
+    QString panelUpdateSql = QString("update %1 set %2=%3 where %4='%5'")
+            .arg(panelBll->getTableName())
+            .arg(panelBll->dbColumnList[PanelBLL::Status].name)
+            .arg(QString::number(PanelBLL::PanelStatusEnum_Scan))
+            .arg(panelBll->dbColumnList[PanelBLL::ID].name)
+            .arg(QString::number(panel->id));
+
+    // 更新pack表
+    QString packUpdateSql = QString("update %1 set "
+                                    "%2=(select count(1) from %2 where %3=%1.id) "
+                                    "where id=%4")
+            .arg(this->tableName)
+            .arg(this->dbColumnNames[PackBLL::PackColEnum::ScanPanelCount])
+            .arg(panelBll->getTableName())
+            .arg(panelBll->dbColumnList[PanelBLL::PackId].name)
+            .arg(QString::number(packId));
+    QString packUpdateStatusSql = QString("update %1 set %2=%3 "
+                                    "where %4=%5 id=%6")
+            .arg(this->tableName)
+            .arg(this->dbColumnNames[PackBLL::PackColEnum::Status])
+            .arg(QString::number(PackBLL::Status_Full))
+            .arg(this->dbColumnNames[PackBLL::PackColEnum::ScanPanelCount])
+            .arg(this->dbColumnNames[PackBLL::PackColEnum::PanelTotal])
+            .arg(QString::number(packId));
+
+    // 执行
+    QList<QString> sqls =  QList<QString>{panelUpdateSql, packUpdateSql, packUpdateStatusSql};
+    auto result = g_db->ExecSql(sqls.join(";"));
+
+    return result;
+}
+
+/*
+QList<Package> PackBLL::getList(QString orderNo){
+    QList<Package> result;
+    QStringList wheres;
+    if (!orderNo.isEmpty()){
+        wheres.append(QString("orderNo='%1'").arg(orderNo));
+    }
+    dal.reload(true, wheres);
+
+   auto rows =  dal.getRowList();
+   for (auto& row : rows){
+       Package package;
+       package.id = row->data(PackColEnum::ID).toInt();
+       package.length = row->data(PackColEnum::Length).toInt();
+       package.width = row->data(PackColEnum::Width).toInt();
+       package.height = row->data(PackColEnum::Height).toInt();
+
+       package.no = row->data(PackColEnum::No).toString();
+
+       package.orderNo = row->data(PackColEnum::OrderNo).toString();
+       package.customerName =  row->data(PackColEnum::CustomerName).toString();
+
+       package.flowNo = row->data(PackColEnum::FlowNo).toInt();
+       package.scanPanelCount = row->data(PackColEnum::ScanPanelCount).toInt();
+       package.panelTotal = row->data(PackColEnum::PanelTotal).toInt();
+       result.append(package);
+   }
+   return result;
+} */
 
 bool PackBLL::updateStatus(uint id, PackBLL::StatusEnum status, QString message){
     for(int index = 0;index<dal.getRowCount();index++)

@@ -10,7 +10,12 @@ class PanelBLL: public QObject
     Q_OBJECT
 
 public:
-    enum PanelType
+    enum PanelStatusEnum{
+        PanelStatusEnum_Init = 0,
+        PanelStatusEnum_Scan = 1
+    };
+
+    enum PanelColEnum
     {
         ID,
         ExternalId,
@@ -23,6 +28,7 @@ public:
         Name,
         No,
         Remark,
+        Status,
         PackId,
         CreateTime,
         LastModifyTime,
@@ -40,6 +46,7 @@ public:
         {"name", "TEXT"},
         {"no", "TEXT"},
         {"remark", "TEXT"},
+        {"status", "INTEGER"},
         {"pack_id", "INTEGER"},
         {"create_at", "DATETIME"},
         {"update_at", "DATETIME"},
@@ -63,9 +70,17 @@ public:
 
     QList<QSharedPointer<Row>> getRowList(bool isReload = false);
 
+    // 根据包裹id找到关联的板件列表
     QList<Panel> getPanelsByPackId(int packId);
 
+    // 通过UPI找到板件的记录
+    QSharedPointer<Panel> getSingleByUPI(QString upi);
+
     static PanelBLL *getInstance(QObject *parent = nullptr);
+
+    QString getTableName(){
+        return tableName;
+    }
 
 private:
     static PanelBLL *m_panelBll;

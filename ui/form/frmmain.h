@@ -22,6 +22,7 @@
 
 #include "globalhook.h"
 #include "common/CustomerStatusBar.h"
+#include "common/fullscreenwindow.h"
 
 #include <QMainWindow>
 
@@ -100,8 +101,16 @@ private:
 
     // 处理键盘钩子获取到的扫码数据
     void handleScannedData(const QString &data);
+    void handleScannedData_YZ(const QString &data); // 预值处理
+    void handleScannedData_Barcode(const QString &data); // 条码信息处理
 
+    // 包裹列表中的右键菜单
     void handlePackTableMenuAction(QAction *action, const QModelIndex &index);
+
+    // 预分包页签中的导入板件列表
+    void page_yfb_panelDataBinding();
+    void page_yfb_tvAlgorithmPackages_DataBinding();
+    void page_yfb_tvAlgorithmPanles_DataBinding(QList<Panel> panels);
 
 private slots:
     // 开启 socket server
@@ -117,12 +126,18 @@ private slots:
 
 private:
     QStandardItemModel *m_packModel;
+
     PackBLL *m_packBll;
     PanelBLL *m_panelBll;
     ConditionBLL *m_conditionBll;
 
     QStandardItemModel *m_tbAddValueConditionsModel;
     QStandardItemModel *m_tbPackTemplateModel;
+
+    QStandardItemModel *m_tbImportPanelsModel; // 绑定到table中的数据
+    QList<Panel> m_importPanels; // 导入板件列表
+    QStandardItemModel *m_algorithmPackagesModel; //
+    QList<Package> m_algorithmPackages; //
 
     Package m_panelsPackage;
     QList<Panel> m_panels;
@@ -185,6 +200,14 @@ private slots:
 
     void on_btnRemove_PackTemplateCondition_clicked(bool checked);
 
+    void on_btnImport_clicked();
+
+    void on_btnAlgorithm_clicked();
+
+    void on_pushButton_clicked();
+
+    void on_btnExport_clicked();
+
 private:
     QSystemTrayIcon *trayIcon;
     Algorithm* m_algorithm;
@@ -199,6 +222,8 @@ private:
     QList<ConditionDto> m_packTemplateConditions;
     // 等待条件列表
     QList<ConditionDto> m_waitingConditions;
+
+    const QString StatusBar_IconName_Socket = "socket";
 
 };
 
