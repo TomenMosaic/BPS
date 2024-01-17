@@ -28,6 +28,10 @@ public:
         Name,
         No,
         Remark,
+        OrderNo,
+        CustomerName,
+        Location,
+
         Status,
         PackId,
         CreateTime,
@@ -46,6 +50,10 @@ public:
         {"name", "TEXT"},
         {"no", "TEXT"},
         {"remark", "TEXT"},
+        {"order_no", "VARCHAR(100)"},
+        {"customer_name", "VARCHAR(100)"},
+        {"location", "VARCHAR(100)"},
+
         {"status", "INTEGER"},
         {"pack_id", "INTEGER"},
         {"create_at", "DATETIME"},

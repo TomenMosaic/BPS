@@ -63,9 +63,11 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         colIndex++;
 
         // 已扫码 / 总数
+        auto scanCount = row->data(PackBLL::ScanPanelCount).toUInt();
+        auto total = row->data(PackBLL::PanelTotal).toUInt();
         QString formattedCount = QString("%1 / %2")
-                .arg(row->data(PackBLL::ScanPanelCount).toString(),
-                     row->data(PackBLL::PanelTotal).toString());
+                .arg(QString::number(scanCount))
+                .arg(QString::number(total));
         QStandardItem *countItem = new QStandardItem(formattedCount);
         countItem->setTextAlignment(Qt::AlignCenter);
         itemList.insert(colIndex, countItem);
@@ -83,8 +85,10 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         QColor color = QColor(Qt::white);
         if (statusValue >= PackBLL::StatusEnum::Status_Full){ // 齐套后旧变绿
             color=QColor("#90ee90");
-        }else if (row->data(PackBLL::ScanPanelCount).toUInt() > 0){ // 当有扫码的时候，整行变蓝
+        }else if (scanCount > 0){ // 当有扫码的时候，整行变蓝
             color=QColor("#add8e6");
+        }else if (statusValue == PackBLL::StatusEnum::Status_WaitingForScan){ // 等待扫码录入预值时，变为黄色
+            color = QColor("#ffffe0");
         }
         for (QStandardItem *item : itemList) {
             item->setBackground(color);

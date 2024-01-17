@@ -39,6 +39,9 @@ void PanelBLL::checkAndCreateTable(){
 Panel convertRow2Panel(QSharedPointer<Row> panelRow){
     Panel panel ;
     panel.id = panelRow->data(PanelBLL::PanelColEnum::ID).toInt();
+    panel.no = panelRow->data(PanelBLL::PanelColEnum::No).toString();
+    panel.externalId = panelRow->data(PanelBLL::PanelColEnum::ExternalId).toString();
+
     panel.length = panelRow->data(PanelBLL::PanelColEnum::Length).toInt();
     panel.width = panelRow->data(PanelBLL::PanelColEnum::Width).toInt();
     panel.height = panelRow->data(PanelBLL::PanelColEnum::Height).toInt();
@@ -46,6 +49,10 @@ Panel convertRow2Panel(QSharedPointer<Row> panelRow){
     panel.createTime =  panelRow->data(PanelBLL::PanelColEnum::CreateTime).toDateTime();
     panel.name = panelRow->data(PanelBLL::PanelColEnum::Name).toString();
     panel.remark = panelRow->data(PanelBLL::PanelColEnum::Remark).toString();
+
+    panel.orderNo = panelRow->data(PanelBLL::PanelColEnum::OrderNo).toString();
+    panel.customerName = panelRow->data(PanelBLL::PanelColEnum::CustomerName).toString();
+    panel.location = panelRow->data(PanelBLL::PanelColEnum::Location).toString();
 
     auto status = static_cast<PanelBLL::PanelStatusEnum>(panelRow->data(PanelBLL::PanelColEnum::Status).toInt());
     panel.isScaned = status == PanelBLL::PanelStatusEnum::PanelStatusEnum_Scan; // 是否扫码

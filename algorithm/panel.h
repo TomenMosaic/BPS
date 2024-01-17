@@ -71,6 +71,7 @@ public:
 
     Panel()
         : id(0), length(0), width(0), height(0),
+          externalId(""), dbPackId(0),
           name(""), remark(""), location(""), sculpt(""),
           createTime(QDateTime::currentDateTime()),
           layerNumber(0), position(0, 0), rotated(false){
@@ -79,9 +80,12 @@ public:
 
     // 拷贝构造函数
     Panel(const Panel& other)
-        : id(other.id), externalId(other.externalId), no(other.no),
+        : id(other.id), externalId(other.externalId), dbPackId(other.dbPackId),
+          no(other.no),
           length(other.length), width(other.width), height(other.height),
-          name(other.name), remark(other.remark), location(other.location), sculpt(other.sculpt),
+          name(other.name), remark(other.remark), location(other.location),
+          sculpt(other.sculpt), orderNo(other.orderNo), customerName(other.customerName),
+          isScaned(other.isScaned),
           createTime(other.createTime),
           layerNumber(other.layerNumber), position(other.position), rotated(other.rotated) {
     }

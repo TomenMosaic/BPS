@@ -85,6 +85,10 @@ public:
 
     bool ExecSql(const QString& sql, const QMap<QString, QVariant>& params);
 
+    bool ExecSql(QStringList sqls);
+
+    bool ExecSql(const QList<QPair<QString, QMap<QString, QVariant>>>& sqls);
+
     /**
      * @description: 执行更新指令
      */

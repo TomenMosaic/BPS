@@ -22,7 +22,7 @@
 
 #include "globalhook.h"
 #include "common/CustomerStatusBar.h"
-#include "common/fullscreenwindow.h"
+#include "common/FullScreenMask.h"
 
 #include <QMainWindow>
 
@@ -126,6 +126,7 @@ private slots:
 
 private:
     QStandardItemModel *m_packModel;
+    QString m_currentOrderNo;
 
     PackBLL *m_packBll;
     PanelBLL *m_panelBll;

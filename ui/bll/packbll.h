@@ -139,6 +139,8 @@ public:
 
     int insertByPackStruct(const Package& package, PackTypeEnum packType = PackTypeEnum::PackType_Socket);
 
+    QVector<int> insertByPackStructs(const QList<Package> packages, PackTypeEnum packType = PackTypeEnum::PackType_Socket);
+
     /**
      * @description: 更新数据
      */

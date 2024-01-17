@@ -4,11 +4,13 @@
 #include "iconhelper.h"
 #include "quihelper.h"
 
-#include "common/tableview_controller.h"
+#include "common/FullScreenMask.h"
 #include "ExcelReader.h"
 
 #include <QList>
 #include <QScriptEngine>
+
+FullScreenMask* FullScreenMask::m_instance = nullptr;
 
 // 导入板件数据
 void frmMain::on_btnImport_clicked()
@@ -31,7 +33,7 @@ void frmMain::on_btnImport_clicked()
     auto varsList = ExcelReader::readExcel(fileName, columnTypes);
     QList<Panel> importPanels;
     for (const auto& vars: qAsConst(varsList) ){
-        Panel panel;
+        Panel panel = Panel();
         for (auto it = vars.constBegin(); it != vars.constEnd(); ++it) {
            auto propertyName = columnTypes2[it.key()].propertyName;
            auto var = it.value();
@@ -355,9 +357,8 @@ void frmMain::on_btnAlgorithm_clicked()
 void frmMain::on_pushButton_clicked()
 {
     // 保存到数据库
-    for (const auto& package : qAsConst(this->m_algorithmPackages)){
-        this->m_packBll->insertByPackStruct(package);
-    }
+    this->m_packBll->insertByPackStructs(this->m_algorithmPackages,
+                                        PackBLL::PackTypeEnum::PackType_PrePackaging);
 
     // 导出按钮enable
     this->ui->btnExport->setEnabled(true);

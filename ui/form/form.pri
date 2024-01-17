@@ -5,7 +5,7 @@ FORMS += \
 
 HEADERS += \
     $$PWD/common/CustomerStatusBar.h \
-    $$PWD/common/fullscreenwindow.h \
+    $$PWD/common/FullScreenMask.h \
     $$PWD/common/tableview_controller.h \
     $$PWD/frmmain.h \
     $$PWD/settings.h

@@ -54,8 +54,12 @@ void frmMain::handleScannedData_YZ(const QString &scannedData){
     }
 }
 
-FullScreenWindow *FullScreenWindow::currentInstance = nullptr;
 void frmMain::handleScannedData_Barcode(const QString &scannedData){
+    if (scannedData.size() < 8){
+        qWarning() << scannedData << " 长度过短！";
+        return;
+    }
+
     // 默认是板件的条码
     QString panelBarcode = scannedData;
 
@@ -67,39 +71,51 @@ void frmMain::handleScannedData_Barcode(const QString &scannedData){
         return;
     }
 
-    //2. 更新
-    int packFlowIndex = 0;
+    //2. 查找包裹记录
+    QString currentOrderNo = panel->orderNo;
+    int packFlowIndex = 0; // 包裹在订单中的序号
+    int selectedRow = 0; // 在model中的序列号
+    QList<QSharedPointer<Row>> packList = this->m_packBll->getCacheList();
+    if (this->m_currentOrderNo != currentOrderNo){ // 如果当前包裹不对应
+        packList = this->m_packBll->getList(panel->orderNo);
+        this->m_currentOrderNo = currentOrderNo;
+    }
+    for (int i = 0; i < packList.size(); i++) {
+        auto pack = packList[i];
+        auto packId = pack->data(PackBLL::PackColEnum::ID).toUInt();
+        if (packId == panel->dbPackId){
+            selectedRow = i;
+            packFlowIndex = pack->data(PackBLL::PackColEnum::FlowNo).toUInt();
+            break;
+        }
+    }
+
+    //3. 更新
     if (!panel->isScaned){   // 如果没有扫码
         //2.1. 更新板件的状态为已扫码
         this->m_packBll->panelScanned(panel->no);
 
         // 重新加载包裹列表
-        auto packList = this->m_packBll->getList(panel->orderNo);
         this->initForm_PackDataBinding(false);
 
-        // 设置包裹列表中选中包裹为 当前板件对应的包裹
-        int selectedRow = 0;
-        for (int i = 0; i < packList.size(); i++) {
-            auto pack = packList[i];
-            auto packId = pack->data(PackBLL::PackColEnum::ID).toUInt();
-            if (packId == panel->dbPackId){
-                selectedRow = i;
-                break;
-            }
-        }
+        // 设置当前选中的包裹
         QModelIndex index = this->m_packModel->index(selectedRow, 0);
         QItemSelectionModel *selectionModel = this->ui->tvPackList->selectionModel();
         selectionModel->select(index, QItemSelectionModel::Select | QItemSelectionModel::Rows);
     }
 
-    //3. 弹窗提示 & 语音提示
-    QString textToShow = QString("%1/n%2车%3格")
-            .arg(panel->customerName)
-            .arg(QString::number(packFlowIndex/10 + 1))
-            .arg(QString::number(packFlowIndex%10));
-    FullScreenWindow window(textToShow);
-    window.showFullScreen();
-    window.speak(textToShow);
+    //4. 弹窗提示 & 语音提示
+    int carIndex = packFlowIndex/10 + 1;
+    int cellIndex = (packFlowIndex)%10;
+    QString textToShow = QString("%1, %2车%3格")
+                .arg(panel->location)
+                .arg(QString::number(carIndex))
+                .arg(QString::number(cellIndex));
+    QString textToSpeed = QString("%1, 请放到 第%2车的第%3格")
+                .arg(panel->location)
+                .arg(QString::number(carIndex))
+                .arg(QString::number(cellIndex));
+    FullScreenMask::getInstance()->showMessage(textToShow, 10*1000, true, textToSpeed);
 }
 
 

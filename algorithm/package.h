@@ -23,7 +23,7 @@ public:
     int flowNo;
 
     // 已扫码的板件数据
-    int scanPanelCount;
+    int scanPanelCount = 0;
     // 包裹中板件的总数量
     //int panelTotal;
 
@@ -39,9 +39,10 @@ public:
 
     // 拷贝构造函数
     Package(const Package& other)
-        : id(other.id), length(other.length), width(other.width),
-          height(other.height), no(other.no), customerName(other.customerName),
-          orderNo(other.orderNo),
+        : id(other.id), length(other.length), width(other.width),height(other.height),
+          no(other.no), customerName(other.customerName),orderNo(other.orderNo),
+          flowNo(other.flowNo),
+          scanPanelCount(other.scanPanelCount),
           layers(other.layers), // 假定Layer也实现了深拷贝
           needsScanConfirmation(other.needsScanConfirmation),
           pendingScan(other.pendingScan) {

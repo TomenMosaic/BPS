@@ -293,20 +293,28 @@ bool DataBase::ExecSql(QString sql, QList<QVariant> data)
     QSqlDatabase db = QSqlDatabase::database();
     db.transaction();
     QSqlQuery query(db);
-    query.prepare(sql);
-    foreach (QVariant val, data)
-    {
-        query.addBindValue(val);
+
+    bool ok = false;
+    if (data.isEmpty()){
+        ok = query.exec(sql);
+    }else{
+        query.prepare(sql);
+        foreach (QVariant val, data)
+            query.addBindValue(val);
+        ok = query.exec();
     }
-    bool ok = query.exec();
+
     if (ok) {
         db.commit();
     } else {
         db.rollback();
 
         // 错误处理: 可以记录错误信息，或者抛出异常等
-        qWarning() << "ExecSql Error: " << query.lastError().text();
-        CLOG_ERROR(QString("ExecSql error: "+ query.lastError().text()).toUtf8());
+       auto msg = QString("ExecSql ( %1 ) Error: %2")
+               .arg(sql)
+               .arg(query.lastError().text());
+        qFatal(msg.toUtf8());
+        //CLOG_ERROR(QString("ExecSql error: "+ query.lastError().text()).toUtf8());
 
     }
     query.clear();
@@ -318,6 +326,59 @@ bool DataBase::ExecSql(QString sql)
     QList<QVariant> data;
     return ExecSql(sql, data);
 }
+
+bool DataBase::ExecSql(QStringList sqls)
+{
+    QList<QPair<QString, QMap<QString, QVariant>>> sqls2;
+    for (const auto &sql : sqls){
+        QMap<QString, QVariant> params;
+        sqls2.append(qMakePair(sql, params));
+    }
+    return ExecSql(sqls2);
+}
+
+bool DataBase::ExecSql(const QList<QPair<QString, QMap<QString, QVariant>>>& sqls)
+{
+    QSqlDatabase db = QSqlDatabase::database();
+    if (!db.transaction()) {
+        qFatal("Unable to start transaction");
+        return false;
+    }
+
+    QSqlQuery query(db);
+
+    bool ok = true;
+    for (const auto& pair : sqls) {
+        const auto& sql = pair.first;
+        const auto& params = pair.second;
+
+        query.clear();
+        if (params.isEmpty()) {
+            ok = query.exec(sql);
+        } else {
+            query.prepare(sql);
+            for (auto paramIter = params.cbegin(); paramIter != params.cend(); ++paramIter) {
+                query.bindValue(paramIter.key(), paramIter.value());
+            }
+            ok = query.exec();
+        }
+
+        if (!ok) {
+            qWarning() << "SQL error for:" << sql << ", Error:" << query.lastError().text();
+            db.rollback();
+            return false; // Exit the function if an error occurs
+        }
+    }
+
+    if (!db.commit()) {
+        qWarning() << "Transaction commit failed:" << db.lastError().text();
+        db.rollback();
+        return false;
+    }
+
+    return true;
+}
+
 
 void DataBase::ExecAddSqlBlock(QString sql, QList<QVariantList> tableData)
 {
