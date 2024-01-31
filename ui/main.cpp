@@ -11,7 +11,6 @@
 #include <QSettings>
 #include <QScreen>
 
-
 void writePidToFile() {
     QFile file("app.pid");
     if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -69,8 +68,14 @@ bool checkAndTerminatePreviousInstance(const QString &processName) {
 
 // 自定义消息处理函数
 void customMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
-
-    auto utf8Bytes = msg.toUtf8();
+    QString file = context.file ? context.file : "";
+    QString function = context.function ? context.function : "";
+    int line = context.line;
+    QString logMsg = msg.toUtf8();
+    if (type == QtCriticalMsg || type == QtFatalMsg){
+        logMsg = QString("[%1:%2:%3] %4 ").arg(file, function, QString::number(line), msg);
+    }
+    auto utf8Bytes = logMsg.toUtf8();
 
     // 根据消息类型添加不同的前缀
     switch (type) {

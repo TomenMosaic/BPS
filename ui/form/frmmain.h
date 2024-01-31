@@ -10,6 +10,8 @@
 #include <QWebSocketServer>
 #include <QWebSocket>
 
+#include <QGraphicsView>
+
 #include <QQueue>
 
 #include "packbll.h"
@@ -23,6 +25,9 @@
 #include "globalhook.h"
 #include "common/CustomerStatusBar.h"
 #include "common/FullScreenMask.h"
+#include "common/MyQueue.h"
+
+#include "ModbusClient.h"
 
 #include <QMainWindow>
 
@@ -84,6 +89,8 @@ private:
     void initConfig();
     void initForm_PackDataBinding(bool isReload = false);
 
+    QGraphicsView* getLayerView(Layer layer, int packageLength, int packageWidth, qreal scaleFactor);
+
     //
     void initForm_PanelDataBinding(bool isReload = false);
     void initForm_PanelDataPreview();
@@ -93,11 +100,18 @@ private:
     void handler4PackBarccode();
     void handler4PanelBarccode();
 
-    void sendFileToHotFolder(const Package &package);
+    bool workFlow_WaitingForScan_ToleranceValues(PackageDto& pack);
+    void sendFileToHotFolder(const PackageDto &package);
+
+    // 自动流转
+    void runFlow(PackageDto& packDto,  PackageDto::StatusEnum* targetStatus = nullptr);
+    PackageDto::StatusEnum runFlow_send2PanelDockingStation(PackageDto& packDto);
+    PackageDto::StatusEnum runFlow_WaitingForSend(PackageDto& packDto);
+
 
     // 处理socket client发送的数据
-    bool parseSocketClientData(const QString socketClientData);
-    bool parseSocketClientData(const QByteArray &binaryMessage);
+    bool parseSocketClientData(const QString socketClientData, QString clientIp);
+    bool parseSocketClientData(const QByteArray &binaryMessage, QString clientIp);
 
     // 处理键盘钩子获取到的扫码数据
     void handleScannedData(const QString &data);
@@ -112,6 +126,8 @@ private:
     void page_yfb_tvAlgorithmPackages_DataBinding();
     void page_yfb_tvAlgorithmPanles_DataBinding(QList<Panel> panels);
 
+
+
 private slots:
     // 开启 socket server
     void startSocketServer();
@@ -123,6 +139,16 @@ private slots:
     //web socket server
     void handlerWebSocketNewConnection();
     // void onWebSocketTextMessageReceived(QWebSocket *clientSocket, const QString &message);
+
+private:
+    // 开始工作站服务
+    void startMeasuringStationServer();
+    bool send2PanelDockingStation(uint dbPackId, int panelDockingStationIndex);
+    bool isAllowWrite2PanelDockingStation(int panelDockingStationIndex);
+    int getScanEntryIndex(QString originIp);
+
+    // 队列
+    void initQueue();
 
 private:
     QStandardItemModel *m_packModel;
@@ -137,10 +163,10 @@ private:
 
     QStandardItemModel *m_tbImportPanelsModel; // 绑定到table中的数据
     QList<Panel> m_importPanels; // 导入板件列表
-    QStandardItemModel *m_algorithmPackagesModel; //
-    QList<Package> m_algorithmPackages; //
 
-    Package m_panelsPackage;
+    QStandardItemModel *m_algorithmPackagesModel; //
+    QList<PackageAO> m_algorithmPackages; //
+    PackageAO m_panelsPackage;
     QList<Panel> m_panels;
 
     // tcp server
@@ -157,13 +183,8 @@ private:
     // 状态栏
     CustomStatusBar* m_customStatusBar;
 
-    // 添加任务到队列
-    void enqueueTask(Package& pack);
-
     // 处理队列中的任务
     void processTasks();
-
-
 
 protected:
     // 重写关闭事件
@@ -209,12 +230,21 @@ private slots:
 
     void on_btnExport_clicked();
 
+    void on_isOpenMeasuringStation_stateChanged(int arg1);
+
 private:
     QSystemTrayIcon *trayIcon;
     Algorithm* m_algorithm;
 
+    // 入口队列
+    QList<MyQueue<PackageDto>> m_entryQueues; //TODO
     // 等待队列
-    QQueue<Package> m_waitingQueue;
+    MyQueue<PackageDto> m_waitingQueue;
+    // 轮询等待队列的定时器
+    QTimer* m_waitingQueue_timer;
+    // 轮询等待队列的定时器 是否作业中
+    bool m_waitingQueue_timer_isProcess = false;
+
     // 和预值的对应关系
     QMap<QString, DimensionThresholds> m_orderThreshold;
     // 预值条件列表
@@ -225,6 +255,14 @@ private:
     QList<ConditionDto> m_waitingConditions;
 
     const QString StatusBar_IconName_Socket = "socket";
+    const QString StatusBar_IconName_Modbus = "plc";
+    const QString StatusBar_IconName_Queue = "queue";
+
+    //
+    ModbusClient *m_modbusClient;
+    QTimer* m_modbusClient_Timer;
+    bool m_modbusClient_isProcess = false;
+
 
 };
 

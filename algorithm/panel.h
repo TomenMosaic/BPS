@@ -13,12 +13,12 @@
 class Panel
 {
 public:
-    int id;
+    int id = 0;
     QString externalId;
     QString no;
-    int length;
-    int width;
-    int height;
+    int length = 0;
+    int width = 0;
+    int height = 0;
 
     // 板件名称：要有关键词来区分板件，例如“XX门板”的关键词“门”可以确认为门板。每种类别板件可以有多个关键词，若无关键词默认为柜体。
     QString name;
@@ -50,9 +50,9 @@ public:
     // 板件在层中的坐标（x, y）
     QPoint position;
     // 板件是否被旋转
-    bool rotated;
+    bool rotated = false;
 
-    //是否扫码
+    // 是否扫码
     bool isScaned = true;
 
     // 强制加入，不计算

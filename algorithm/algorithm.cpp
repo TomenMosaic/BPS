@@ -157,7 +157,7 @@ bool Algorithm::findPositionForPanel(Layer& layer, Panel& panel, int layerLength
     return tryPlacePanel(false) || tryPlacePanel(true);
 }
 
-bool Algorithm::forcePlacePanelInPackageLayers(Package& package, Panel& originPanel) {
+bool Algorithm::forcePlacePanelInPackageLayers(PackageAO& package, Panel& originPanel) {
 
     int minimalExceed = INT_MAX;
     QPoint bestPosition(-1, -1);
@@ -274,7 +274,7 @@ bool Algorithm::forcePlacePanelInPackageLayers(Package& package, Panel& originPa
 }
 
 // 重新排列层的函数
-void Algorithm::rearrangeLayers(Package& package) {
+void Algorithm::rearrangeLayers(PackageAO& package) {
     if (package.layers.length() <= 2){
         return;
     }
@@ -327,7 +327,7 @@ void Algorithm::rearrangeLayers(Package& package) {
     }
 }
 
-void Algorithm::updatePackageSize(QList<Panel>& panels, Package& package){
+void Algorithm::updatePackageSize(QList<Panel>& panels, PackageAO& package){
     //1. 找出最大长宽，考虑旋转的情况
     for (Panel& panel : panels) {
         // 无论矩形是否旋转，比较长度和宽度，找出最大的值
@@ -350,8 +350,8 @@ void Algorithm::updatePackageSize(QList<Panel>& panels, Package& package){
     }
 }
 
-Package Algorithm::createLayers(QList<Panel>& panels) {
-    Package package;
+PackageAO Algorithm::createLayers(QList<Panel>& panels) {
+    PackageAO package;
 
     //0. valid
     if (panels.isEmpty()){

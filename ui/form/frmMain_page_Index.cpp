@@ -10,7 +10,6 @@
 #include <QList>
 #include <QScriptEngine>
 
-
 void onTreeItemClicked(QTreeWidgetItem *item, int /* column */) {
     if (item->text(0) == "详情" || item->text(0) == "隐藏") {
         if (item->childCount() > 0){
@@ -25,10 +24,25 @@ void onTreeItemClicked(QTreeWidgetItem *item, int /* column */) {
 }
 
 void frmMain::initForm_PackDataBinding(bool isReload){
-    ui->tvPackList->verticalHeader()->setVisible(false); // 显示表头
+    this->m_algorithmPackages[100];
 
+    ui->tvPackList->verticalHeader()->setVisible(false); // 显示表头
     m_packModel = new QStandardItemModel(this);
-    m_packModel->setHorizontalHeaderLabels({ "ID", "包号", "尺寸", "已扫/总数", "状态"}); // 列头
+
+    // 列头
+    QStringList headers = {"ID", "包号", "尺寸"};
+    if (g_config->getWorkConfig().workMode == WorkModeEnum::socat){
+        headers.append("总数");
+    }else{
+        headers.append("已扫/总数");
+    }
+    if (g_config->getMeasuringStationConfig().isOpen){
+        headers.append("拼版口");
+    }
+    headers.append("状态");
+    m_packModel->setHorizontalHeaderLabels(headers);
+
+    // model binding
     ui->tvPackList->setModel(m_packModel);
 
     m_packModel->setRowCount(0); // ??
@@ -65,17 +79,31 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         // 已扫码 / 总数
         auto scanCount = row->data(PackBLL::ScanPanelCount).toUInt();
         auto total = row->data(PackBLL::PanelTotal).toUInt();
-        QString formattedCount = QString("%1 / %2")
-                .arg(QString::number(scanCount))
-                .arg(QString::number(total));
+        QString formattedCount;
+        if (g_config->getWorkConfig().workMode == WorkModeEnum::socat){
+            formattedCount = QString::number(total);
+        }else{
+            formattedCount = QString("%1 / %2")
+                    .arg(QString::number(scanCount))
+                    .arg(QString::number(total));
+        }
         QStandardItem *countItem = new QStandardItem(formattedCount);
         countItem->setTextAlignment(Qt::AlignCenter);
         itemList.insert(colIndex, countItem);
         colIndex++;
 
+        // 拼板口
+        if (g_config->getMeasuringStationConfig().isOpen){
+            auto entryIndex = this->getScanEntryIndex(row->data(PackBLL::PackColEnum::OriginIp).toString());
+            QStandardItem *entryItem = new QStandardItem(QString::number(entryIndex + 1)); // +1
+            entryItem->setTextAlignment(Qt::AlignCenter);
+            itemList.insert(colIndex, entryItem);
+            colIndex++;
+        }
+
         // status
-        PackBLL::StatusEnum statusValue = static_cast<PackBLL::StatusEnum>(row->data(PackBLL::Status).toInt()); // 转换为枚举值
-        QString statusText = m_packBll->statusEnumToString(statusValue); // 转换为枚举对应的中文
+        PackageDto::StatusEnum statusValue = static_cast<PackageDto::StatusEnum>(row->data(PackBLL::Status).toInt()); // 转换为枚举值
+        QString statusText = PackageDto::statusEnumToString(statusValue); // 转换为枚举对应的中文
         QStandardItem *statusItem = new QStandardItem(statusText);
         statusItem->setTextAlignment(Qt::AlignCenter); // 居中
         itemList.insert(colIndex, statusItem);
@@ -83,11 +111,15 @@ void frmMain::initForm_PackDataBinding(bool isReload){
 
         // 设置行的背景颜色
         QColor color = QColor(Qt::white);
-        if (statusValue >= PackBLL::StatusEnum::Status_Full){ // 齐套后旧变绿
+        if (statusValue >= PackageDto::StatusEnum::Status_Step4_Sent){ // 发送后变绿
             color=QColor("#90ee90");
         }else if (scanCount > 0){ // 当有扫码的时候，整行变蓝
             color=QColor("#add8e6");
-        }else if (statusValue == PackBLL::StatusEnum::Status_WaitingForScan){ // 等待扫码录入预值时，变为黄色
+        }else if (statusValue == PackageDto::StatusEnum::Status_Step1_Waiting4ScanFull ||
+                  statusValue == PackageDto::StatusEnum::Status_Step2_Waiting4MeasuringHeight ||
+                  statusValue == PackageDto::StatusEnum::Status_Step2_Waiting4SendPackNo ||
+                  statusValue == PackageDto::StatusEnum::Status_Step3_Waiting4ScanTolerance ||
+                  statusValue == PackageDto::StatusEnum::Status_Step4_WaitingForSend){ // 等待扫码录入预值时，变为黄色
             color = QColor("#ffffe0");
         }
         for (QStandardItem *item : itemList) {
@@ -101,8 +133,9 @@ void frmMain::initForm_PackDataBinding(bool isReload){
     this->ui->tvPackList->setColumnHidden(0, true); // ID列隐藏
     this->ui->tvPackList->resizeColumnsToContents(); // 根据内容调整列
     this->ui->tvPackList->resizeRowsToContents(); // 这会调整行高以适应内容
-    this->ui->tvPackList->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch); // 其他列使用 Stretch
-    this->ui->tvPackList->horizontalHeader()->setSectionResizeMode(m_packModel->columnCount() - 1, QHeaderView::ResizeToContents); // 按钮列使用 ResizeToContents
+    this->ui->tvPackList->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    this->ui->tvPackList->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch); // 尺寸列使用 Stretch
+    //this->ui->tvPackList->horizontalHeader()->setSectionResizeMode(m_packModel->columnCount() - 1, QHeaderView::ResizeToContents); // 按钮列使用 ResizeToContents
 
     // pack table
     this->ui->tvPackList->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -116,7 +149,7 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         // 当前选中行
         QSharedPointer<Row> newRow = this->m_packBll->getCacheList().at(rowIndex);
         int packId = newRow->data(PackBLL::ID).toInt();
-        Package currentPackage;
+        PackageAO currentPackage;
         currentPackage.id = newRow->data(PackBLL::ID).toInt();
         currentPackage.no = newRow->data(PackBLL::No).toString();
         currentPackage.customerName = newRow->data(PackBLL::CustomerName).toString();
@@ -141,6 +174,8 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         qDeleteAll(topItem->takeChildren()); // 清除现有的子节点
         auto logs = newRow->data(PackBLL::Logs).toString().split("\n");
         for (auto& log:logs) {
+            if (log.isEmpty())
+                continue;
             QTreeWidgetItem *childItem = new QTreeWidgetItem(topItem);
             childItem->setText(0, log); // 设置子节点的文本
         }
@@ -282,6 +317,67 @@ void frmMain::initForm_PanelDataBinding(bool isReload){
 
 }
 
+QGraphicsView* frmMain::getLayerView(Layer layer, int packageLength, int packageWidth, qreal scaleFactor){
+    // 为每层创建一个 QGraphicsScene 和 QGraphicsView
+    QGraphicsScene *scene = new QGraphicsScene();
+    QGraphicsView *view = new QGraphicsView(scene);
+    view->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding); // 设置为扩展策略
+
+    // 当有多张板件的时候，创建底图矩形，示意当前层的大小
+    if (layer.getUsedArea() < packageWidth * packageLength) {
+        QGraphicsRectItem *baseRectItem = new QGraphicsRectItem(0, 0,
+                                                                packageLength  * scaleFactor,
+                                                                packageWidth  * scaleFactor);
+        baseRectItem->setPen(QPen(Qt::red, 2)); // 1像素红色边框
+        baseRectItem->setBrush(QBrush(Qt::lightGray)); // 浅灰色的背景
+        scene->addItem(baseRectItem);
+    }
+
+    // 创建每个板件的图形矩形
+    for (const Panel& panel : qAsConst(layer.panels)) {
+        int x = panel.position.x() * scaleFactor;
+        int y = panel.position.y() * scaleFactor;
+
+        QString text = QString("%1; %2x%3x%4%5")
+                .arg(panel.id)
+                .arg(panel.length)
+                .arg(panel.width)
+                .arg(panel.height)
+                .arg(panel.rotated ? "; r" : "");
+
+        // 创建矩形，位置和大小匹配板件的坐标和尺寸，设置边框和背景色
+        QGraphicsRectItem *rectItem ;
+        if (panel.rotated) {// 如果板件旋转，长宽对调
+            rectItem = new QGraphicsRectItem(x, y, panel.width * scaleFactor, panel.length * scaleFactor);
+        }else{
+            rectItem = new QGraphicsRectItem(x, y, panel.length * scaleFactor, panel.width * scaleFactor);
+        }
+        rectItem->setPen(QPen(Qt::black, 1)); // 1像素黑色边框
+        if (panel.isScaned){
+            rectItem->setBrush(QBrush(Qt::blue)); //
+        }else{
+            rectItem->setBrush(QBrush(Qt::green)); //
+        }
+        rectItem->setToolTip(text+QString("; %1,%2").arg(x).arg(y)); // tooltip
+        scene->addItem(rectItem);
+
+        // 在矩形上显示板件信息
+        QGraphicsTextItem *textItem = scene->addText(text);
+        QFont font;
+        font.setPixelSize(14);  // 设置字体大小为 14 像素
+        textItem->setFont(font);  // 应用字体
+        textItem->setDefaultTextColor(Qt::black);  // 设置文本颜色
+        //QRectF rect = textItem->boundingRect();
+        textItem->setPos(x, y);  // 设置文本项的位置
+    }
+
+    // 设置 QGraphicsView 缩放
+    // view->scale(scaleFactor, scaleFactor);
+    // view->setSceneRect(0, 0, this->m_panelsPackage.length, this->m_panelsPackage.width);
+
+    return view;
+}
+
 void frmMain::initForm_PanelDataPreview() {
     // 清空 QTabWidget 中的所有 tabs
     this->ui->tabLayerPreview->clear();
@@ -297,63 +393,7 @@ void frmMain::initForm_PanelDataPreview() {
     // 遍历层，在tab中创建新的tab，tab的内容是预览图
     for (int i = 0; i < m_panelsPackage.layers.size(); ++i) {
         const Layer &layer = m_panelsPackage.layers[i];
-
-        // 为每层创建一个 QGraphicsScene 和 QGraphicsView
-        QGraphicsScene *scene = new QGraphicsScene();
-        QGraphicsView *view = new QGraphicsView(scene);
-        view->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding); // 设置为扩展策略
-
-        // 当有多张板件的时候，创建底图矩形，示意当前层的大小
-        if (layer.getUsedArea() < this->m_panelsPackage.length * this->m_panelsPackage.width) {
-            QGraphicsRectItem *baseRectItem = new QGraphicsRectItem(0, 0,
-                                                                    this->m_panelsPackage.length  * scaleFactor,
-                                                                    this->m_panelsPackage.width  * scaleFactor);
-            baseRectItem->setPen(QPen(Qt::red, 2)); // 1像素红色边框
-            baseRectItem->setBrush(QBrush(Qt::lightGray)); // 浅灰色的背景
-            scene->addItem(baseRectItem);
-        }
-
-        // 创建每个板件的图形矩形
-        for (const Panel& panel : layer.panels) {
-            int x = panel.position.x() * scaleFactor;
-            int y = panel.position.y() * scaleFactor;
-
-            QString text = QString("%1; %2x%3x%4%5")
-                    .arg(panel.id)
-                    .arg(panel.length)
-                    .arg(panel.width)
-                    .arg(panel.height)
-                    .arg(panel.rotated ? "; r" : "");
-
-            // 创建矩形，位置和大小匹配板件的坐标和尺寸，设置边框和背景色
-            QGraphicsRectItem *rectItem ;
-            if (panel.rotated) {// 如果板件旋转，长宽对调
-                rectItem = new QGraphicsRectItem(x, y, panel.width * scaleFactor, panel.length * scaleFactor);
-            }else{
-                rectItem = new QGraphicsRectItem(x, y, panel.length * scaleFactor, panel.width * scaleFactor);
-            }
-            rectItem->setPen(QPen(Qt::black, 1)); // 1像素黑色边框
-            if (panel.isScaned){
-                rectItem->setBrush(QBrush(Qt::blue)); //
-            }else{
-                rectItem->setBrush(QBrush(Qt::green)); //
-            }
-            rectItem->setToolTip(text+QString("; %1,%2").arg(x).arg(y)); // tooltip
-            scene->addItem(rectItem);
-
-            // 在矩形上显示板件信息
-            QGraphicsTextItem *textItem = scene->addText(text);
-            QFont font;
-            font.setPixelSize(14);  // 设置字体大小为 14 像素
-            textItem->setFont(font);  // 应用字体
-            textItem->setDefaultTextColor(Qt::black);  // 设置文本颜色
-            //QRectF rect = textItem->boundingRect();
-            textItem->setPos(x, y);  // 设置文本项的位置
-        }
-
-        // 设置 QGraphicsView 缩放
-        // view->scale(scaleFactor, scaleFactor);
-        // view->setSceneRect(0, 0, this->m_panelsPackage.length, this->m_panelsPackage.width);
+        QGraphicsView *view = getLayerView(layer, m_panelsPackage.length, m_panelsPackage.width, scaleFactor);
 
         // 创建每个 tab 的页面 widget
         QWidget *tabPage = new QWidget();
@@ -363,7 +403,7 @@ void frmMain::initForm_PanelDataPreview() {
         tabPage->setLayout(layout);
 
         // 设置 QGraphicsView 缩放
-        view->setSceneRect(scene->itemsBoundingRect()); // 调整视图的场景矩形以适应所有项的边界
+        // view->setSceneRect(scene->itemsBoundingRect()); // 调整视图的场景矩形以适应所有项的边界
         // view->fitInView(scene->itemsBoundingRect(), Qt::KeepAspectRatio); // 缩放视图以适应所有内容
 
         // 添加新的 tab，页签名字为层号
@@ -401,7 +441,7 @@ void frmMain::on_btnSearch_clicked()
     initForm_PackDataBinding();
 }
 
-//信号与槽  - 链接显示和输入文本框信息
+//信号与槽 - 链接显示和输入文本框信息
 void frmMain::on_ButtonSend_clicked()
 {
     this->handler4PackBarccode();
@@ -418,28 +458,3 @@ void frmMain::on_txtPanelBarcode_Enter(){
 }
 
 
-// 加入队列
-void frmMain::enqueueTask(Package& pack){
-    this->m_waitingQueue.enqueue(pack);
-}
-
-// 处理队列中的任务
-void frmMain::processTasks()
-{
-    // 队列不为空，且队列头部的任务不为等待扫码状态
-    if (!this->m_waitingQueue.isEmpty()){
-        if  (!this->m_waitingQueue.head().needsScanConfirmation
-             || (this->m_waitingQueue.head().needsScanConfirmation
-                 && !this->m_waitingQueue.head().pendingScan)){
-            // 出队
-            Package pack = this->m_waitingQueue.dequeue();
-
-            // 发送包裹数据
-            this->sendFileToHotFolder(pack);
-
-            // 更新表格状态
-            this->initForm_PackDataBinding();
-        }
-
-    }
-}

@@ -7,6 +7,7 @@
 #include <QToolButton>
 #include <QAction>
 #include <QMap>
+#include <QTimer>
 
 class CustomStatusBar : public QWidget {
     Q_OBJECT
@@ -34,7 +35,9 @@ public:
 
     // 左下角 提示文本 的设置
     void setInfoText(const QString &text) {
-        infoLabel->setText(text);
+        QTimer::singleShot(10, this, [this, text](){
+            infoLabel->setText(text);
+        });
     }
 
     // 添加图标的公共方法
@@ -76,11 +79,23 @@ public:
         }
     }
 
-    void setTooltip(const QString &label, const QString &tooltip) {
+    void setTooltip(const QString &label, const QString &tooltip, bool isError = false) {
         if (buttonMap.contains(label)) {
             QAction *action = buttonMap[label]->defaultAction();
             if (action) {
                 action->setToolTip(tooltip);
+
+                // 获取关联的按钮
+                QToolButton *button = qobject_cast<QToolButton *>(action->parentWidget());
+                if (button) {
+                    // 如果 isError 为 true，设置按钮文本的颜色为红色
+                    if (isError) {
+                        button->setStyleSheet("color: red;");
+                    } else {
+                        // 重置回默认样式
+                        button->setStyleSheet("");
+                    }
+                }
             }
         }
     }

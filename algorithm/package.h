@@ -6,12 +6,20 @@
 #include <QJsonObject>
 #include <QSet>
 
-class Package {
+
+
+class PackageAO {
 public:
-    int id;
-    int length;
-    int width;
-    int height;
+    enum PackageAOBlockEventEnum{
+        ScanRC = 1,
+        CG = 2
+    };
+
+public:
+    int id = 0;
+    int length = 0;
+    int width = 0;
+    int height = 0;
 
     // 包裹条码
     QString no;
@@ -20,7 +28,7 @@ public:
     // 订单号
     QString orderNo;
     // 流水号（一个订单分组里面的第几包）
-    int flowNo;
+    int flowNo = -1;
 
     // 已扫码的板件数据
     int scanPanelCount = 0;
@@ -29,28 +37,31 @@ public:
 
     // 层列表
     QList<Layer> layers;
-    // 是否需要扫码确认
-    bool needsScanConfirmation = false;
+
+    //TODO 放在这里不合适，需要单独的对象
+    //QSet<PackageAOBlockEventEnum> blockEvents;
+
     // 等待
-    bool pendingScan = false;
+    //bool waiting = false;
 
-    Package() : length(0), width(0), height(0) {}
+    // 来源IP
+    //QString originIP;
 
+    PackageAO() : id(0), length(0), width(0), height(0) {}
 
     // 拷贝构造函数
-    Package(const Package& other)
+    PackageAO(const PackageAO& other)
         : id(other.id), length(other.length), width(other.width),height(other.height),
           no(other.no), customerName(other.customerName),orderNo(other.orderNo),
           flowNo(other.flowNo),
           scanPanelCount(other.scanPanelCount),
-          layers(other.layers), // 假定Layer也实现了深拷贝
-          needsScanConfirmation(other.needsScanConfirmation),
-          pendingScan(other.pendingScan) {
+          layers(other.layers) // 假定Layer也实现了深拷贝
+          {
 
     }
 
     // 拷贝赋值运算符
-    Package& operator=(const Package& other) {
+    PackageAO& operator=(const PackageAO& other) {
         if (this != &other) {
             id = other.id;
             length = other.length;
@@ -59,9 +70,7 @@ public:
             no = other.no;
             customerName = other.customerName;
             orderNo = other.orderNo;
-            layers = other.layers; // 假定Layer也实现了深拷贝
-            needsScanConfirmation = other.needsScanConfirmation;
-            pendingScan = other.pendingScan;
+            layers = other.layers; // 假定Layer也实现了深拷贝            
         }
         return *this;
     }
@@ -127,57 +136,6 @@ public:
         // 长宽高暂时不清理
     }
 
-    QString getScript(QString expression) const {
-        QString script = expression;
-        if (! this->customerName.isEmpty()){
-            script = script.replace("{CustomerName}", this->customerName);
-        }
-        if (! this->orderNo.isEmpty()){
-            script = script.replace("{OrderNo}", this->orderNo);
-        }
-        script = script.replace("{LayerCount}", QString::number(this->layers.size())); // 层数
-        script = script.replace("{PackageHeight}", QString::number(this->height)); // 包裹高度
-        script = script.replace("{PackageWidth}", QString::number(this->width)); // 包裹宽度
-        script = script.replace("{PackageLength}", QString::number(this->length)); // 包裹长度
-
-        // 包含板件名称、说明、位置、特殊工艺列表
-        QSet<QString> panelNameSet; // name
-        QSet<QString> panelRemarkSet; // remark
-        QSet<QString> panelLocationSet; // 位置
-        QSet<QString> panelSculptSet; // 工艺
-        for (const Layer& layer: qAsConst(layers)){
-            for (const Panel& panel: qAsConst(layer.panels)){
-                panelNameSet.insert(panel.name);
-                panelRemarkSet.insert(panel.remark);
-                panelLocationSet.insert(panel.location);
-                panelSculptSet.insert(panel.sculpt);
-            }
-        }
-        script = script.replace("{PanelNames}", panelNameSet.toList().join(","));
-        script = script.replace("{PanelRemarks}", panelRemarkSet.toList().join(","));
-        script = script.replace("{PanelLocations}", panelLocationSet.toList().join(","));
-        script = script.replace("{PanelSculpts}", panelSculptSet.toList().join(","));
-
-        return script;
-    }
-
-    QString getKey() const{
-        QSet<QString> panelLocationSet; // 位置
-        for (const Layer& layer: qAsConst(layers)){
-            for (const Panel& panel: qAsConst(layer.panels)){
-                panelLocationSet.insert(panel.location);
-            }
-        }
-
-        QString result ;
-        if (customerName.isEmpty() && panelLocationSet.isEmpty()){
-            result = no;
-        }else{
-            result = QString("%1_%2").arg(customerName, panelLocationSet.toList().join(","));
-        }
-        return result;
-    }
-
     QList<Panel> getPanels() const{
         QList<Panel> panels;
         for (auto& layer : this->layers){
@@ -205,7 +163,7 @@ public:
     }
 
     // 重载==运算符 //TODO 是否可以去掉
-    bool operator==(const Package& other) const {
+    bool operator==(const PackageAO& other) const {
         // 如果有多个属性需要比较，可以扩展比较逻辑
         return this->height == other.height
             && this->length == other.length

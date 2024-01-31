@@ -36,7 +36,9 @@ LRESULT CALLBACK GlobalHook::KeyboardProc(int nCode, WPARAM wParam, LPARAM lPara
         DWORD vkCode = kbdStruct->vkCode; // 虚拟键码
 
         // 判断是否为功能键
-        if (vkCode == VK_CONTROL || vkCode == VK_SHIFT || vkCode == VK_MENU) {
+        if (vkCode == VK_LCONTROL || vkCode == VK_RCONTROL ||
+                vkCode == VK_LSHIFT || vkCode == VK_RSHIFT ||
+                vkCode == VK_LMENU || vkCode == VK_RMENU) {
             return CallNextHookEx(hHook, nCode, wParam, lParam); // 直接返回，忽略功能键
         }
 

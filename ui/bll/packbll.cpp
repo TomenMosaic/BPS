@@ -33,28 +33,7 @@ void PackBLL::init()
     // 初始化 databable
     QStringList orders;
     orders.append("id desc");
-    dal.initTable(tableName, this->dbColumnNames, QStringList(), orders, 12, 0, true);
-}
-
-QString PackBLL::statusEnumToString(StatusEnum status){
-    switch (status) {
-    case Status_Init:
-        return QStringLiteral("初始化");
-    case Status_Full:
-        return QStringLiteral("齐套");
-    case Status_Calculated:
-        return QStringLiteral("计算结束");
-    case Status_WaitingForScan:
-        return QStringLiteral("等待扫码");
-    case Status_WaitingForSend:
-        return QStringLiteral("等待发送");
-    case Status_Sent:
-        return QStringLiteral("已发送");
-    case Status_Finish:
-        return QStringLiteral("结束");
-    default:
-        return QStringLiteral("-");
-    }
+    dal.initTable(tableName, this->dbColumnNames, QStringList(), orders, this->m_pageSize, 0, true);
 }
 
 void PackBLL::checkAndCreateTable(){
@@ -64,13 +43,15 @@ void PackBLL::checkAndCreateTable(){
 QList<QSharedPointer<Row>> PackBLL::getList(QString orderNo)
 {
     QStringList wheres;
+    int pageSize = this->m_pageSize;
     if (!orderNo.isEmpty()){
         wheres.append(QString("%1='%2'")
-                .arg(this->dbColumnNames[PackColEnum::OrderNo])
+                      .arg(this->dbColumnNames[PackColEnum::OrderNo])
                 .arg(orderNo));
+        pageSize = 0; // 如果指定了orderno，就要显示对应的所有数据
     }
 
-    dal.reload(0, 0, wheres, QStringList());
+    dal.reload(pageSize, 0, wheres, QStringList()); // 最多显示26条最新的数据
     return dal.getRowList();
 }
 
@@ -79,14 +60,14 @@ QList<QSharedPointer<Row>> PackBLL::getCacheList()
     return dal.getRowList();
 }
 
-int PackBLL::insert(QString no, uint length, uint width, uint height, PackTypeEnum type){
+int PackBLL::insert(QString no, uint length, uint width, uint height, PackageDto::PackTypeEnum type){
     QMap<QString,QString> mapList;
     mapList.insert(this->dbColumnNames.at(No),no);
     mapList.insert(this->dbColumnNames.at(Length),QString::number(length));
     mapList.insert(this->dbColumnNames.at(Width),QString::number(width));
     mapList.insert(this->dbColumnNames.at(Height),QString::number(height));
     mapList.insert(this->dbColumnNames.at(Type),QString::number(type));
-    mapList.insert(this->dbColumnNames.at(Status),QString::number(Status_Init));
+    mapList.insert(this->dbColumnNames.at(Status),QString::number(PackageDto::StatusEnum::Status_Init));
     QDateTime currentTime =  QDateTime::currentDateTime();
     QString formattedTime = currentTime.toString("yyyy-MM-dd HH:mm:ss.zzz");
     mapList.insert(this->dbColumnNames.at(CreateTime),formattedTime);
@@ -96,7 +77,7 @@ int PackBLL::insert(QString no, uint length, uint width, uint height, PackTypeEn
     return newId;
 }
 
-QVector<int> PackBLL::insertByPackStructs(const QList<Package> packages, PackTypeEnum packType){
+QVector<int> PackBLL::insertByPackStructs(const QList<PackageDto>& packages){
     QVector<int> result;
     QSqlDatabase db = QSqlDatabase::database();
     db.transaction();
@@ -105,23 +86,27 @@ QVector<int> PackBLL::insertByPackStructs(const QList<Package> packages, PackTyp
     try {
         QSqlQuery query(db);
 
-        for (const auto& package : packages){
+        for (const auto& packDto : packages){
             query.clear();
             //1. 插入数据到pack表
             //1.1. 需要插入的数据
             QMap<QString,QVariant> mapList;
-            mapList.insert(this->dbColumnNames.at(PackColEnum::No),package.no);
-            mapList.insert(this->dbColumnNames.at(PackColEnum::CustomerName),package.customerName);
-            mapList.insert(this->dbColumnNames.at(PackColEnum::OrderNo),package.orderNo);
-            mapList.insert(this->dbColumnNames.at(PackColEnum::Length),package.length);
-            mapList.insert(this->dbColumnNames.at(PackColEnum::Width),package.width);
-            mapList.insert(this->dbColumnNames.at(PackColEnum::Height),package.height);
-            mapList.insert(this->dbColumnNames.at(PackColEnum::Type), packType);
-            if (packType == PackTypeEnum::PackType_PrePackaging){
-                mapList.insert(this->dbColumnNames.at(PackColEnum::FlowNo), package.flowNo);
+            mapList.insert(this->dbColumnNames.at(PackColEnum::No),packDto.no);
+            mapList.insert(this->dbColumnNames.at(PackColEnum::CustomerName),packDto.customerName);
+            mapList.insert(this->dbColumnNames.at(PackColEnum::OrderNo),packDto.orderNo);
+            mapList.insert(this->dbColumnNames.at(PackColEnum::Length),packDto.length);
+            mapList.insert(this->dbColumnNames.at(PackColEnum::Width),packDto.width);
+            mapList.insert(this->dbColumnNames.at(PackColEnum::Height),packDto.height);
+            mapList.insert(this->dbColumnNames.at(PackColEnum::Type), packDto.type);
+            if (packDto.type == PackageDto::PackTypeEnum::PackType_PrePackaging){
+                mapList.insert(this->dbColumnNames.at(PackColEnum::FlowNo), packDto.flowNo);
             }
-            mapList.insert(this->dbColumnNames.at(PackColEnum::PanelTotal), package.getPanelTotal());
-            mapList.insert(this->dbColumnNames.at(PackColEnum::Status), QString::number(Status_Init));
+            mapList.insert(this->dbColumnNames.at(PackColEnum::PanelTotal), packDto.panelTotal);
+            mapList.insert(this->dbColumnNames.at(PackColEnum::Status),
+                           QString::number(PackageDto::StatusEnum::Status_Init));
+            if (!packDto.originIp.isEmpty()){
+                mapList.insert(this->dbColumnNames.at(PackColEnum::OriginIp), packDto.originIp);
+            }
             QDateTime currentTime = QDateTime::currentDateTime();
             QString formattedTime = currentTime.toString("yyyy-MM-dd HH:mm:ss.zzz");
             mapList.insert(this->dbColumnNames.at(PackColEnum::CreateTime), formattedTime);
@@ -134,7 +119,7 @@ QVector<int> PackBLL::insertByPackStructs(const QList<Package> packages, PackTyp
                 packBindVals << (":" + colName);
             }
             QString sql = QString("INSERT INTO pack (%1) VALUES (%2);")
-                                .arg(packColnames.join(","), packBindVals.join(","));
+                    .arg(packColnames.join(","), packBindVals.join(","));
             query.prepare(sql);
             for (const auto &colName : qAsConst(packColnames)) {
                 query.addBindValue(mapList.value(colName));
@@ -151,50 +136,46 @@ QVector<int> PackBLL::insertByPackStructs(const QList<Package> packages, PackTyp
             result.append(newPackId);
 
             //2. 插入关联的panel记录
-            foreach (Layer layer, package.layers) {
-                foreach(const Panel& panel, layer.panels){
-                    query.clear();
-                    QMap<QString, QVariant> panelMapList;
-                    panelMapList.insert("pack_id", newPackId);
-                    panelMapList.insert("name", panel.name);
-                    panelMapList.insert("no", panel.no);
-                    panelMapList.insert("remark", panel.remark);
-                    panelMapList.insert("external_id", panel.externalId);
-                    panelMapList.insert("layer", panel.layerNumber);
-                    panelMapList.insert("position", QString("%1,%2").
-                                                        arg(panel.position.x()).
-                                                        arg(panel.position.y()));
-                    panelMapList.insert("rotated",QString::number(panel.rotated));
+            foreach(const Panel& panel, packDto.panels){
+                query.clear();
+                QMap<QString, QVariant> panelMapList;
+                panelMapList.insert("pack_id", newPackId);
+                panelMapList.insert("name", panel.name);
+                panelMapList.insert("no", panel.no);
+                panelMapList.insert("remark", panel.remark);
+                panelMapList.insert("external_id", panel.externalId);
+                panelMapList.insert("layer", panel.layerNumber);
+                panelMapList.insert("position", QString("%1,%2").
+                                    arg(panel.position.x()).
+                                    arg(panel.position.y()));
+                panelMapList.insert("rotated",QString::number(panel.rotated));
 
-                    panelMapList.insert(this->dbColumnNames.at(Length), QString::number(panel.length));
-                    panelMapList.insert(this->dbColumnNames.at(Width), QString::number(panel.width));
-                    panelMapList.insert(this->dbColumnNames.at(Height), QString::number(panel.height));
+                panelMapList.insert(this->dbColumnNames.at(Length), QString::number(panel.length));
+                panelMapList.insert(this->dbColumnNames.at(Width), QString::number(panel.width));
+                panelMapList.insert(this->dbColumnNames.at(Height), QString::number(panel.height));
 
-                    panelMapList.insert("customer_name", panel.customerName);
-                    panelMapList.insert("order_no", panel.orderNo);
-                    panelMapList.insert("location", panel.location);
+                panelMapList.insert("customer_name", panel.customerName);
+                panelMapList.insert("order_no", panel.orderNo);
+                panelMapList.insert("location", panel.location);
 
-                    panelMapList.insert(this->dbColumnNames.at(CreateTime),formattedTime);
-                    panelMapList.insert(this->dbColumnNames.at(LastModifyTime),formattedTime);
+                panelMapList.insert(this->dbColumnNames.at(CreateTime),formattedTime);
+                panelMapList.insert(this->dbColumnNames.at(LastModifyTime),formattedTime);
 
-                    QStringList panelColNames = panelMapList.keys();
-                    QStringList panelBindVals;
-                    for (const auto &colName : qAsConst(panelColNames)) {
-                        panelBindVals << (":" + colName);
-                    }
-                    query.prepare(QString("INSERT INTO panel (%1) VALUES (%2);").
-                                  arg(panelColNames.join(","), panelBindVals.join(",")));
-                    for (const auto &key : qAsConst(panelColNames)) {
-                        query.addBindValue(panelMapList.value(key));
-                    }
-                    if (!query.exec()) {
-                        QSqlError error = query.lastError();
-                        throw std::runtime_error(("无法插入 panel 表记录, "+error.text()).toStdString());
-                    }
-
+                QStringList panelColNames = panelMapList.keys();
+                QStringList panelBindVals;
+                for (const auto &colName : qAsConst(panelColNames)) {
+                    panelBindVals << (":" + colName);
+                }
+                query.prepare(QString("INSERT INTO panel (%1) VALUES (%2);").
+                              arg(panelColNames.join(","), panelBindVals.join(",")));
+                for (const auto &key : qAsConst(panelColNames)) {
+                    query.addBindValue(panelMapList.value(key));
+                }
+                if (!query.exec()) {
+                    QSqlError error = query.lastError();
+                    throw std::runtime_error(("无法插入 panel 表记录, "+error.text()).toStdString());
                 }
             }
-
         }
 
         //3. 提交
@@ -212,55 +193,151 @@ QVector<int> PackBLL::insertByPackStructs(const QList<Package> packages, PackTyp
     return result;
 }
 
-int PackBLL::insertByPackStruct(const Package& package, PackTypeEnum packType){
-    QList<Package> packages;
+int PackBLL::insertByPackStruct(const PackageDto& package){
+    QList<PackageDto> packages;
     packages.append(package);
-    QVector<int> ids = insertByPackStructs(packages, packType);
+    QVector<int> ids = insertByPackStructs(packages);
     if (ids.size() == 1)
         return ids[0];
 
     return -1;
 }
 
-bool PackBLL::remove(uint id){
+bool PackBLL::remove(uint packId){
     return false;
 }
 
-QSharedPointer<Row> PackBLL::detail(uint id){
-    return nullptr;
+QSharedPointer<PackageDto> convertRow2Package(QSharedPointer<Row> packageRow){
+    if (packageRow.isNull()){
+        return nullptr;
+    }
+
+    QSharedPointer<PackageDto> pack = QSharedPointer<PackageDto>::create();
+
+    pack->id = packageRow->data(PackBLL::PackColEnum::ID).toInt();
+    pack->no = packageRow->data(PackBLL::PackColEnum::No).toString();
+
+    pack->length = packageRow->data(PackBLL::PackColEnum::Length).toInt();
+    pack->width = packageRow->data(PackBLL::PackColEnum::Width).toInt();
+    pack->height = packageRow->data(PackBLL::PackColEnum::Height).toInt();
+
+    pack->orderNo = packageRow->data(PackBLL::PackColEnum::OrderNo).toString();
+    pack->customerName = packageRow->data(PackBLL::PackColEnum::CustomerName).toString();
+
+    pack->originIp = packageRow->data(PackBLL::PackColEnum::OriginIp).toString();
+
+    auto status = static_cast<PackageDto::StatusEnum>(packageRow->data(PackBLL::PackColEnum::Status).toInt());
+    pack->status = status;
+    pack->flowNo = packageRow->data(PackBLL::PackColEnum::FlowNo).toInt();
+
+    return pack;
 }
 
-bool PackBLL::calculated(uint id){
-    return updateStatus(id, PackBLL::Status_Calculated);
+QSharedPointer<PackageDto> PackBLL::getPackageByDbId(uint packId){
+    QSharedPointer<Row> row = detail(packId);
+    return convertRow2Package(row);
 }
 
-bool PackBLL::waitingForScan(uint id, QString message){
-    return updateStatus(id, PackBLL::Status_WaitingForScan, message);
+QSharedPointer<Row> PackBLL::detail(uint packId){
+    // 先在缓存中查找，再到数据库里面查找
+    QMap<QString, QVariant> conditions;
+    conditions.insert(this->dbColumnNames.at(PackColEnum::ID), packId);
+
+    return dal.getRow(conditions);
 }
 
-bool PackBLL::waitingForSend(uint id){
-    return updateStatus(id, PackBLL::Status_WaitingForSend);
+bool PackBLL::Step1_Calculated(uint packId){
+    return updateStatus(packId, PackageDto::StatusEnum::Status_Step1_Calculated);
 }
 
-bool PackBLL::sent(uint id, QString message){
-    return updateStatus(id, PackBLL::Status_Sent, message);
+bool PackBLL::Step1_Full(uint packId){
+    return updateStatus(packId, PackageDto::StatusEnum::Status_Step1_ScanFull);
 }
 
-bool PackBLL::finish(uint id){
-    return updateStatus(id, PackBLL::Status_Finish);
+bool PackBLL::Step2_Waiting4PackNo_PanelSockStation(uint packId){
+    return updateStatus(packId, PackageDto::StatusEnum::Status_Step2_Waiting4SendPackNo);
 }
 
-bool PackBLL::beginPrint(uint id){
+bool PackBLL::Step2_SentPackNo_PanelSockStation(uint packId){
+    return  updateStatus(packId, PackageDto::StatusEnum::Status_Step2_SentPackNo);
+}
+
+bool PackBLL::Step2_SentPackNo_WaitinMeasuringHeight(uint packId){
+    return   updateStatus(packId, PackageDto::StatusEnum::Status_Step2_Waiting4MeasuringHeight);
+}
+
+bool PackBLL::Step2_GotMeasuringHeight(uint packId, uint height){
+    if (height <= 0 || height >= 200){ //TODO　200 需要作为参数录入
+        qWarning() << packId << " 对应高度值非法";
+    }
+    if (packId <= 0){
+        qWarning() << "包裹ID不正确";
+    }
+    QStringList messages;
+
+    auto pack = getPackageByDbId(packId);
+
+    QMap<QString, QVariant> updates;
+    if (!pack.isNull()){
+        // 是否状态已经改变了
+        if (pack->status >= PackageDto::StatusEnum::Status_Step2_GotMeasuringHeight){
+            qWarning() << QString("当前包裹（%1）状态为（%2）不能再更新测量高度！")
+                          .arg(QString::number(packId))
+                          .arg(PackageDto::statusEnumToString(pack->status));
+            return false;
+        }
+
+        // 是否高度值有变化
+        if (pack->height != height){
+            updates[this->dbColumnNames.at(PackColEnum::Height)] = height;
+            auto msg = QString("height: %1 -> measuring height: %2")
+                    .arg(QString::number(pack->height))
+                    .arg(QString::number(height));
+            messages.append(msg);
+        }
+    }else{
+        updates[this->dbColumnNames.at(PackColEnum::Height)] = height;
+    }
+
+    // update
+    return updateStatus(packId,
+                        PackageDto::StatusEnum::Status_Step2_GotMeasuringHeight,
+                        messages.join(";"),
+                        updates);
+}
+
+// 等待扫码
+bool PackBLL::Step3_Waiting4ScanToleranceValue(uint packId, QString message){
+    return updateStatus(packId, PackageDto::StatusEnum::Status_Step3_Waiting4ScanTolerance, message);
+}
+
+// 完成容差值的获取
+bool PackBLL::Step3_SentScanToleranceValue(uint packId){
+    return updateStatus(packId, PackageDto::StatusEnum::Status_Step3_GotScanTolerance);
+}
+
+// 等待发送
+bool PackBLL::Step4_Waiting4SendWorkData(uint packId){
+    return updateStatus(packId, PackageDto::StatusEnum::Status_Step4_WaitingForSend);
+}
+
+// 发送成功
+bool PackBLL::Step4_SentWorkData(uint packId, QString message){
+    return updateStatus(packId, PackageDto::StatusEnum::Status_Step4_Sent, message);
+}
+
+/*
+bool PackBLL::beginPrint(uint packId){
     return true;
 }
 
-bool PackBLL::sentToPrinter(uint id){
+bool PackBLL::sentToPrinter(uint packId){
     return true;
 }
 
-bool PackBLL::finishPrint(uint id){
+bool PackBLL::finishPrint(uint packId){
     return true;
-}
+}*/
 
 bool PackBLL::panelScanned(QString upi){
     auto panelBll = PanelBLL::getInstance(nullptr);
@@ -301,10 +378,10 @@ bool PackBLL::panelScanned(QString upi){
     // 当扫码总数 == 板件总数时，更新pack表对应记录的status字段
     QString packUpdateStatusSql = QString("update %1 set %2=%3, "
                                           "update_at = datetime('now', 'localtime') "
-                                    " where %4=%5 and id=%6")
+                                          " where %4=%5 and id=%6")
             .arg(this->tableName)
             .arg(this->dbColumnNames[PackBLL::PackColEnum::Status])
-            .arg(QString::number(PackBLL::Status_Full))
+            .arg(QString::number(PackageDto::StatusEnum::Status_Step1_ScanFull))
             .arg(this->dbColumnNames[PackBLL::PackColEnum::ScanPanelCount])
             .arg(this->dbColumnNames[PackBLL::PackColEnum::PanelTotal])
             .arg(QString::number(packId));
@@ -316,27 +393,50 @@ bool PackBLL::panelScanned(QString upi){
     return result;
 }
 
-bool PackBLL::updateStatus(uint id, PackBLL::StatusEnum status, QString message){
+bool PackBLL::updateStatus(uint packId,
+                           PackageDto::StatusEnum status,
+                           QString message,
+                           QMap<QString, QVariant> updates){
+
     for(int index = 0;index<dal.getRowCount();index++)
     {
         QSharedPointer<Row> curRow = dal.getRow(index);
-        if(curRow->data(PackBLL::ID).toInt()==id)
-        {
-            auto now =  QDateTime::currentDateTime();
-            curRow->setData(PackBLL::Status, status);
-            if (status == Status_Sent){
-                curRow->setData(PackBLL::SentTime, now);
-            }
-            curRow->setData(PackBLL::LastModifyTime, now);
-            QString log = curRow->data(PackBLL::Logs).toString();
-            if (!message.isEmpty()){
-                log += message;
-            }
-            log += QString("status -> %1, at %2 \n\n").arg(statusEnumToString(status), now.toString("MM-dd HH:mm:ss.mmm"));
-            curRow->setData(PackBLL::Logs, log);
-            dal.update(curRow);
-            return true;
+        if(curRow->data(PackBLL::ID).toInt()!=packId)
+            continue;
+
+        auto now =  QDateTime::currentDateTime();
+        curRow->setData(PackBLL::Status, status);
+        if (status == PackageDto::StatusEnum::Status_Step4_Sent){
+            curRow->setData(PackBLL::SentTime, now);
         }
+        curRow->setData(PackBLL::LastModifyTime, now);
+
+        // 额外需要更新的字段
+        for (const auto key: updates.keys()){
+            if (key == this->dbColumnNames.at(PackBLL::PackColEnum::Status)){
+                qWarning() << "状态字段重复赋值！";
+                continue;
+            }
+
+            curRow->setData(key, updates[key]);
+            message += QString("col:%1 value:%2->%3; ")
+                    .arg(key)
+                    .arg(curRow->data(PackBLL::Height).toString())
+                    .arg(updates[key].String);
+        }
+
+        QString log = curRow->data(PackBLL::Logs).toString();
+        if (!message.isEmpty()){
+            log = message + log;
+        }
+        log = QString("status -> %1, at %2 \n\n")
+                .arg(PackageDto::statusEnumToString(status), now.toString("MM-dd HH:mm:ss.mmm")) + log;
+        curRow->setData(PackBLL::Logs, log);
+
+        QMap<QString, QVariant> wheres;
+        wheres[this->dbColumnNames.at(PackBLL::PackColEnum::ID)] = packId; // 使用主键
+        dal.update(curRow, wheres);
+        return true;
     }
 
     return false;
@@ -355,3 +455,32 @@ void PackBLL::refreshLastID()
         }
     }
 }
+
+QSharedPointer<Row> PackBLL::detail(QString no){
+    for(int rowIndex = 0;rowIndex < dal.getRowCount();rowIndex++)
+    {
+        QSharedPointer<Row>row = dal.getRow(rowIndex);
+        QString currentNo = row->data(PackColEnum::No).toString();
+        if(no == currentNo)
+        {
+            return row;
+        }
+    }
+    return nullptr;
+}
+
+QSharedPointer<PackageDto> PackBLL::detailStruct(QString no){
+    for(int rowIndex = 0;rowIndex < dal.getRowCount();rowIndex++)
+    {
+        QSharedPointer<Row>row = dal.getRow(rowIndex);
+        QString currentNo = row->data(PackColEnum::No).toString();
+        if(no.toLower() == currentNo.toLower()) // 不区分大小写
+        {
+            auto package = convertRow2Package(row);
+            return package;
+        }
+    }
+    return nullptr;
+}
+
+

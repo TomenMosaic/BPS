@@ -10,6 +10,10 @@
 #include <stdarg.h>
 
 #include <QDebug>
+#include <sstream>
+
+#define BOOST_STACKTRACE_USE_BACKTRACE
+#include <boost/stacktrace.hpp>
 
 const char PATH_LogPath[] = "./logs";
 const char Suffix[] = ".log";
@@ -81,8 +85,16 @@ bool CLog::createDir(QString dirPath)
     return true;
 }
 
+QString stacktrace_to_qstring() {
+    const boost::stacktrace::stacktrace st;
+    std::ostringstream oss;
+    oss << st;
+    std::string stacktrace_str = oss.str();
+    return QString::fromStdString(stacktrace_str);
+}
+
 void CLog::log(CLOG_LEVEL nLevel, const char *fileDesc, const char *functionDesc, int lineNum, const char* data, ...)
-{
+{    
     QMutexLocker locker(&mutex);
     if(isFileReady && nLevel >= logLevel)
     {
@@ -100,7 +112,7 @@ void CLog::log(CLOG_LEVEL nLevel, const char *fileDesc, const char *functionDesc
         recordInfo.append(getLeveDesc(nLevel));
 
 #ifndef QT_NO_DEBUG
-        recordInfo.append(QString("[%1:%2:%3]").arg(fileDesc).arg(functionDesc).arg(lineNum));
+        // recordInfo.append(QString("[%1:%2:%3]").arg(fileDesc).arg(functionDesc).arg(lineNum));
 #endif
         va_list vlist;
         va_start(vlist,data);
@@ -116,6 +128,10 @@ void CLog::log(CLOG_LEVEL nLevel, const char *fileDesc, const char *functionDesc
         vsprintf(byteArray.data(),data,vlist);
         recordInfo.append(byteArray);
         va_end(vlist);
+
+        if (nLevel == RERROR || nLevel == RFATAL){
+            recordInfo.append("\n" + stacktrace_to_qstring());
+        }
 
         recordInfo.append("\n");
 

@@ -16,6 +16,21 @@ void frmMain::initForm_SettingDataBinding(){
     this->ui->isWaiting4Scan->setCheckState(g_config->getWorkConfig().isWaiting4Scan ? Qt::Checked : Qt::Unchecked); // 是否等待扫码
     this->ui->txtHotFolderPath->setText(g_config->getDeviceConfig().importDir); // 裁纸机上的热文件夹路径
 
+    // 测量站初始值
+    auto msConfig = g_config->getMeasuringStationConfig();
+    this->ui->isOpenMeasuringStation->setCheckState(msConfig.isOpen ? Qt::Checked : Qt::Unchecked);
+    if (msConfig.isOpen){
+        this->ui->txtModbusTcpClientIp->setText(msConfig.modbusTcpClientIp);
+        this->ui->txtModbusTcpClientPort->setText(QString::number(msConfig.modbusTcpClientPort));
+
+        if (msConfig.scanEntries.size() >= 1){
+            this->ui->txtScanEntry1->setText(msConfig.scanEntries[0]);
+            if (msConfig.scanEntries.size() >= 2){
+                this->ui->txtScanEntry2->setText(msConfig.scanEntries[1]);
+            }
+        }
+    }
+
     // 等待扫码的条件
     if (g_config->getWorkConfig().isWaiting4Scan){
         if (this->m_waitingConditions.size() > 0){
@@ -126,6 +141,11 @@ void frmMain::on_btnSendConfiguration_clicked()
         g_config->setDeviceConfig(deviceConfig);
         WorkConfig workConfig = g_config->getWorkConfig();
         workConfig.isWaiting4Scan = this->ui->isWaiting4Scan->isChecked();
+        if (this->ui->cbWorkMode->currentText() == "接收包裹数据"){
+            workConfig.workMode = WorkModeEnum::socat;
+        }else if (this->ui->cbWorkMode->currentText() == "包裹扫码"){
+            workConfig.workMode = WorkModeEnum::pack_scan;
+        }
         g_config->setWorkConfig(workConfig);
 
         //2. 保存到规则表
@@ -242,12 +262,24 @@ void frmMain::on_btnSendConfiguration_clicked()
             this->m_conditionBll->createOrUpdate(condition);
         }
 
+        //2.3. 测量站
+        auto msConfig =  g_config->getMeasuringStationConfig();
+        msConfig.isOpen = this->ui->isOpenMeasuringStation->isChecked();
+        if (msConfig.isOpen){
+            msConfig.modbusTcpClientIp = this->ui->txtModbusTcpClientIp->text();
+            msConfig.modbusTcpClientPort = this->ui->txtModbusTcpClientPort->text().toUInt();
+
+            msConfig.scanEntries.clear();
+            msConfig.scanEntries.append(this->ui->txtScanEntry1->text());
+            msConfig.scanEntries.append(this->ui->txtScanEntry2->text());
+        }
+        g_config->setMeasuringStationConfig(msConfig);
+
         //2.4. 更新配置页的数据
         this->initConfig(); // 重新加载数据
         this->initForm_SettingDataBinding(); // 重新做数据绑定
 
         QMessageBox::information(this, "", "配置修改成功！");
-
     }catch (const std::exception &e) {
         // 处理或记录异常
         QMessageBox::warning(this, "错误", QString("Exception caught: %s \n").arg(e.what()));
@@ -261,7 +293,6 @@ void frmMain::on_isWaiting4Scan_stateChanged(int arg1)
     this->ui->txtWaiting4ScanCondition->setEnabled(arg1 == Qt::Checked);
 }
 
-
 void frmMain::on_btnInsert_AddValueCondition_clicked(bool checked)
 {
     // 在预值列表中增加一行
@@ -272,7 +303,6 @@ void frmMain::on_btnInsert_AddValueCondition_clicked(bool checked)
     }
     this->m_tbAddValueConditionsModel->appendRow(itemList);
 }
-
 
 void frmMain::on_btnInsert_PackTemplateCondition_clicked(bool checked)
 {
@@ -329,4 +359,18 @@ void frmMain::on_btnRemove_PackTemplateCondition_clicked(bool checked)
     this->m_tbPackTemplateModel->removeRow(curRow);
     qDebug() << QString("删除第%1行").arg(curRow + 1);
 }
+
+// 是否开启了测量站
+void frmMain::on_isOpenMeasuringStation_stateChanged(int arg1)
+{
+    this->ui->txtModbusTcpClientIp->setEnabled(arg1 == Qt::Checked);
+    this->ui->txtModbusTcpClientPort->setEnabled(arg1 == Qt::Checked);
+
+    this->ui->txtScanEntry1->setEnabled(arg1 == Qt::Checked);
+    this->ui->txtScanEntry2->setEnabled(arg1 == Qt::Checked);
+}
+
+
+
+
 

@@ -152,6 +152,15 @@ struct WorkConfig {
     int socketPort = 6061;
 };
 
+// group: MeasuringStation
+struct MeasuringStationConfig{
+    bool isOpen = false;
+    QString modbusTcpClientIp;
+    uint modbusTcpClientPort = 502;
+    // 扫码入口列表
+    QList<QString> scanEntries;
+};
+
 /**
  * @brief ColumnMapping 结构体用于描述Excel文件中的列映射。
  */
@@ -286,6 +295,7 @@ private:
     DeviceConfig m_deviceConfig;
     CleanConfig m_cleanConfig;
     YFBConfig m_prePackConfig;
+    MeasuringStationConfig m_measuringStationConfig;
 
     //
     QSettings *m_globalSettings;
@@ -317,6 +327,8 @@ public:
     // 获取预分包的配置
     YFBConfig getPrePackConfig();
 
+    MeasuringStationConfig getMeasuringStationConfig();
+
     // 设置打印机配置
     void setPrinterConfig(PrinterConfig printerConfig);
     // 设置工作配置
@@ -331,6 +343,8 @@ public:
     void setPackTemplateConfig(PackTemplateConfig stockBinConfig);
     // 设置预分包的配置
     void setPrePackConfig(YFBConfig yfbConfig);
+
+    void setMeasuringStationConfig(MeasuringStationConfig msConfig);
 
 };
 

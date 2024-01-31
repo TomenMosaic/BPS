@@ -4,6 +4,7 @@ INCLUDEPATH += $$PWD
 
 HEADERS += \
     $$PWD/ExcelReader.h \
+    $$PWD/ModbusClient.h \
     $$PWD/configmanage.h \
     $$PWD/convert.h \
     $$PWD/globalhook.h \

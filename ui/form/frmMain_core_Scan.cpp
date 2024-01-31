@@ -10,6 +10,48 @@
 #include <QScriptEngine>
 #include <QTextToSpeech>
 
+bool frmMain::workFlow_WaitingForScan_ToleranceValues(PackageDto& pack){
+    bool isWaitingForAction = false;
+    for(const auto& waitingCondition: qAsConst(this->m_waitingConditions)){
+        QString script = pack.getScript(waitingCondition.Condition);
+
+        // 执行字符串脚本
+        QScriptEngine engine;
+        bool result = engine.evaluate(script).toBool();
+        if (!result)
+            continue;
+
+        // 日志
+        QList<QString> condtionMsgs;
+        condtionMsgs.append("threshold name:"+waitingCondition.Name);
+        condtionMsgs.append("action:"+waitingCondition.action);
+        qDebug() << QString("pack (%1, %2, %3x%4x%5) ").
+                    arg(QString::number(pack.id),
+                        pack.no,
+                        QString::number(pack.length),
+                        QString::number(pack.width),
+                        QString::number(pack.height))
+                 << condtionMsgs.join(",");
+
+        // logs
+        QString  message = QString("waiting condition name: %1, %2 ; \n")
+                .arg(waitingCondition.Name)
+                .arg(condtionMsgs.join(","));
+        qDebug() << message;
+
+        // 如果是 扫码就更新包裹的 状态
+        if (waitingCondition.action == ConditionDto::ActionEnum::scan){
+            this->m_packBll->Step3_Waiting4ScanToleranceValue(pack.id, condtionMsgs.join(","));
+
+            isWaitingForAction = true;
+            break;
+        }
+
+    }
+
+    return isWaitingForAction;
+}
+
 void frmMain::handleScannedData_YZ(const QString &scannedData){
     // 是否等待队列为空，如果为空就退出
     if (this->m_waitingQueue.isEmpty()){
@@ -28,15 +70,25 @@ void frmMain::handleScannedData_YZ(const QString &scannedData){
     QString threshold = array[2];
 
     // 根据信息更新订单对应的预值
-    Package& pack = this->m_waitingQueue.head();
-    QString key = pack.getKey();
+   QSharedPointer<PackageDto> pack;
+    for (auto& queue : this->m_entryQueues){
+        pack = queue.peekIf([](const PackageDto &x) {
+           return x.status == PackageDto::StatusEnum::Status_Step2_Waiting4MeasuringHeight;
+       });
+    }
+    if (!pack) {
+        qWarning() << "没有测量容差的包裹！";
+        return;
+    }
+    QString key = pack->getKey();
 
+    // 在缓存的阻塞包裹(key)中更新当前包裹的尺寸信息
     if (!this->m_orderThreshold.contains(key)){
         DimensionThresholds dt;
         this->m_orderThreshold[key] = dt;
     }
 
-    // 获取表达式
+    // 获取表达式 //TODO 又赋值了一次，没有必要
     if (type == "hyz"){ // 高度预值
         this->m_orderThreshold[key].heightThreshold = threshold;
     }else if(type == "mchyz"){ // 每层高度的预值
@@ -48,10 +100,9 @@ void frmMain::handleScannedData_YZ(const QString &scannedData){
         this->m_orderThreshold[key].lengthThreshold = threshold;
     }
 
-    // 处理等待队列中的数据
-    if (!this->m_waitingQueue.isEmpty() && this->m_waitingQueue.head().needsScanConfirmation){
-        this->m_waitingQueue.head().pendingScan = false; //
-    }
+    // 更新包裹状态
+    auto targetStatus = PackageDto::StatusEnum::Status_Step3_GotScanTolerance;
+    this->runFlow(*pack, &targetStatus);
 }
 
 void frmMain::handleScannedData_Barcode(const QString &scannedData){
@@ -60,14 +111,18 @@ void frmMain::handleScannedData_Barcode(const QString &scannedData){
         return;
     }
 
-    // 默认是板件的条码
-    QString panelBarcode = scannedData;
-
     //1. 在板件表中查找匹配的记录
-    auto panel = this->m_panelBll->getSingleByUPI(panelBarcode);
+    auto panel = this->m_panelBll->getSingleByUPI(scannedData); // 默认是板件的条码
     if (panel.isNull()){
+        //1.1. 是否是一个包裹条码，如果是就按照包裹记录发送
+        auto pack = this->m_packBll->detailStruct(scannedData);
+        if (pack != nullptr){
+            this->sendFileToHotFolder(*pack);
+            return;
+        }
+
         //TODO  提示错误
-        qWarning() << scannedData << " 没有查询到对应的板件数据！";
+        qWarning() << scannedData << " 没有查询到对应的板件 / 包裹数据！";
         return;
     }
 
@@ -92,7 +147,7 @@ void frmMain::handleScannedData_Barcode(const QString &scannedData){
 
     //3. 更新
     if (!panel->isScaned){   // 如果没有扫码
-        //2.1. 更新板件的状态为已扫码
+        // 更新板件的状态为已扫码
         this->m_packBll->panelScanned(panel->no);
 
         // 重新加载包裹列表

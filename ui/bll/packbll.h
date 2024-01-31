@@ -11,6 +11,193 @@
 #include "core/tabledal.h"
 #include "package.h"
 
+class PackageDto {
+public:
+    enum StatusEnum{
+        Status_Init = 0,
+
+        // 计算结束
+        Status_Step1_Calculated = 109,
+        // 等待齐套扫码
+        Status_Step1_Waiting4ScanFull = 110,
+        // 齐套
+        Status_Step1_ScanFull = 119,
+
+        // 等待发送包裹条码到测量站
+        Status_Step2_Waiting4SendPackNo = 210,
+        // 完成发送包裹条码数据
+        Status_Step2_SentPackNo = 219,
+        // 等待测量高度
+        Status_Step2_Waiting4MeasuringHeight = 220,
+        // 已经获取到了高度的测量值
+        Status_Step2_GotMeasuringHeight = 269,
+
+
+        // 等待容差值的录入
+        Status_Step3_Waiting4ScanTolerance = 310,
+        // 容差值已获取
+        Status_Step3_GotScanTolerance = 319,
+
+
+        // 等待发送
+        Status_Step4_WaitingForSend = 900,
+        // 已发送
+        Status_Step4_Sent = 919,
+        // 结束
+        Status_Step4_Finish = 999
+    };
+    enum PrintStatusEnum{
+        PrintStatus_Init = 0,
+        PrintStatus_Sent = 1,
+        PrintStatus_Printed = 9
+    };
+    enum PackTypeEnum{
+        // 预分包（数据已经存在于当前数据库中）
+        PackType_PrePackaging = 0,
+        // socket server 获取到的数据
+        PackType_Socket = 1,
+    };
+
+    PackageDto() = default;
+
+    PackageDto(PackageAO pack, StatusEnum status = PackageDto::StatusEnum::Status_Init) {
+        id = pack.id;
+        length = pack.length;
+        width = pack.width;
+        height = pack.height;
+        no = pack.no;
+        orderNo = pack.orderNo;
+        customerName = pack.customerName;
+        panelTotal = pack.getPanelTotal();
+        layerTotal = pack.layers.size();
+        flowNo = pack.flowNo;
+        this->status = status;
+        panels = pack.getPanels();
+    }
+
+    uint id;
+    uint length;
+    uint width;
+    uint height;
+    QString templateName;
+    StatusEnum status = PackageDto::StatusEnum::Status_Init;
+    QString no;
+    QString orderNo;
+    QString customerName;
+    PackTypeEnum type = PackageDto::PackTypeEnum::PackType_Socket;
+    uint scanPanelCount;
+    uint panelTotal;
+    uint layerTotal;
+    uint flowNo;
+    QString originIp;
+    QStringList logs;
+    QDateTime sentTime;
+    QDateTime createTime;
+    QDateTime lastModifyTime;
+    QDateTime removedAt;
+
+    QList<Panel> panels;
+
+    /**
+     * @description: 状态枚举转换为中文
+     */
+    static QString statusEnumToString(StatusEnum status){
+        switch (status) {
+        case Status_Init:
+            return QStringLiteral("初始化");
+        case Status_Step1_Calculated:
+            return QStringLiteral("计算结束");
+        case Status_Step1_Waiting4ScanFull:
+            return QStringLiteral("等待齐套");
+        case Status_Step1_ScanFull:
+            return QStringLiteral("已齐套");
+        case Status_Step2_Waiting4SendPackNo:
+            return QStringLiteral("进板信号待发");
+        case Status_Step2_SentPackNo:
+            return QStringLiteral("进板信号已发");
+        case Status_Step2_Waiting4MeasuringHeight:
+            return QStringLiteral("等待测高");
+        case Status_Step2_GotMeasuringHeight:
+            return QStringLiteral("测高完成");
+
+        case Status_Step3_Waiting4ScanTolerance:
+            return QStringLiteral("等待容差扫码");
+        case Status_Step3_GotScanTolerance:
+            return QStringLiteral("已获取容差");
+
+        case Status_Step4_WaitingForSend:
+            return QStringLiteral("等待发送");
+        case Status_Step4_Sent:
+            return QStringLiteral("已发送");
+        case Status_Step4_Finish:
+            return QStringLiteral("结束");
+
+        default:
+            return QStringLiteral("-");
+        }
+    }
+
+    QString getScript(QString expression) const {
+        QString script = expression;
+        if (! this->customerName.isEmpty()){
+            script = script.replace("{CustomerName}", this->customerName);
+        }
+        if (! this->orderNo.isEmpty()){
+            script = script.replace("{OrderNo}", this->orderNo);
+        }
+        script = script.replace("{LayerCount}", QString::number(this->layerTotal)); // 层数
+        script = script.replace("{PackageHeight}", QString::number(this->height)); // 包裹高度
+        script = script.replace("{PackageWidth}", QString::number(this->width)); // 包裹宽度
+        script = script.replace("{PackageLength}", QString::number(this->length)); // 包裹长度
+
+        // 包含板件名称、说明、位置、特殊工艺列表
+        QSet<QString> panelNameSet; // name
+        QSet<QString> panelRemarkSet; // remark
+        QSet<QString> panelLocationSet; // 位置
+        QSet<QString> panelSculptSet; // 工艺
+        for (const Panel& panel: panels){
+            panelNameSet.insert(panel.name);
+            panelRemarkSet.insert(panel.remark);
+            panelLocationSet.insert(panel.location);
+            panelSculptSet.insert(panel.sculpt);
+        }
+
+        script = script.replace("{PanelNames}", panelNameSet.toList().join(","));
+        script = script.replace("{PanelRemarks}", panelRemarkSet.toList().join(","));
+        script = script.replace("{PanelLocations}", panelLocationSet.toList().join(","));
+        script = script.replace("{PanelSculpts}", panelSculptSet.toList().join(","));
+
+        return script;
+    }
+
+    QString getKey() const {
+        QSet<QString> panelLocationSet; // 位置
+        for (const Panel& panel: qAsConst(panels)){
+            panelLocationSet.insert(panel.location);
+        }
+
+        QString result ;
+        if (customerName.isEmpty() && panelLocationSet.isEmpty()){
+            result = no;
+        }else{
+            result = QString("%1_%2").arg(customerName, panelLocationSet.toList().join(","));
+        }
+        return result;
+    }
+
+    //
+    bool isAllowSendDataToMachine() const{
+        return this->status == StatusEnum::Status_Step1_Waiting4ScanFull ||
+                this->status == StatusEnum::Status_Step2_Waiting4MeasuringHeight ||
+                this->status == StatusEnum::Status_Step3_Waiting4ScanTolerance;
+    }
+
+    /**
+     * @description: 状态枚举转换为中文
+     */
+    QString printStatusEnumToString(PrintStatusEnum status);
+};
+
 class PackBLL : public QObject
 {
     Q_OBJECT
@@ -37,8 +224,12 @@ public:
         ScanPanelCount,
         // 包裹中板件的总数量
         PanelTotal,
+        // 层数
+        LayerTotal,
         // 所在格（订单中包裹的序号）
         FlowNo,
+        // 来源IP
+        OriginIp,
 
         Logs,
         SentTime,
@@ -61,7 +252,10 @@ public:
 
         {"scan_panel_count", "INTEGER"},
         {"panel_total", "INTEGER"},
+        {"layer_total", "INTEGER"},
         {"flow_no", "INTEGER"},
+
+        {"origin_ip", "VARCHAR(20)"},
 
         {"logs", "TEXT"},
         {"sent_at", "DATETIME"},
@@ -69,42 +263,6 @@ public:
         {"update_at", "DATETIME"},
         {"removed_at", "DATETIME"}
     };
-
-    enum StatusEnum{
-        Status_Init = 0,
-        // 齐套
-        Status_Full = 9,
-        // 计算结束
-        Status_Calculated = 19,
-        // 等待扫码
-        Status_WaitingForScan = 20,
-        // 等待发送
-        Status_WaitingForSend = 26,
-        // 已经发送
-        Status_Sent = 39,
-        Status_Finish = 99
-    };
-    enum PrintStatusEnum{
-        PrintStatus_Init = 0,
-        PrintStatus_Sent = 1,
-        PrintStatus_Printed = 9
-    };
-    enum PackTypeEnum{
-        // 预分包（数据已经存在于当前数据库中）
-        PackType_PrePackaging = 0,
-        // socket server 获取到的数据
-        PackType_Socket = 1,
-    };
-
-    /**
-     * @description: 状态枚举转换为中文
-     */
-    QString statusEnumToString(StatusEnum status);
-
-    /**
-     * @description: 状态枚举转换为中文
-     */
-    QString printStatusEnumToString(PrintStatusEnum status);
 
     /**
      * @description:
@@ -123,7 +281,7 @@ public:
     QList<QSharedPointer<Row>> getCacheList();
 
     //
-    Package getPackageByDbId(uint packId);
+    QSharedPointer<PackageDto> getPackageByDbId(uint packId);
 
     bool save(QList<QVariantList> valueList);
 
@@ -135,42 +293,54 @@ public:
     /**
      * @description: 插入数据
      */
-    int insert(QString no, uint length, uint width, uint height, PackTypeEnum type);
+    int insert(QString no, uint length, uint width, uint height, PackageDto::PackTypeEnum type);
 
-    int insertByPackStruct(const Package& package, PackTypeEnum packType = PackTypeEnum::PackType_Socket);
+    int insertByPackStruct(const PackageDto& package);
 
-    QVector<int> insertByPackStructs(const QList<Package> packages, PackTypeEnum packType = PackTypeEnum::PackType_Socket);
+    QVector<int> insertByPackStructs(const QList<PackageDto>& packages);
 
     /**
      * @description: 更新数据
      */
-    bool update(uint id);
+    bool update(uint packId);
 
     /**
      * @description: 删除数据
      */
-    bool remove(uint id);
+    bool remove(uint packId);
 
     /**
      * @description: 获取详情
      */
-    QSharedPointer<Row> detail(uint id);
+    QSharedPointer<Row> detail(uint packId);
 
-    bool calculated(uint id);
+    QSharedPointer<Row> detail(QString no);
 
-    bool waitingForScan(uint id, QString message = "");
+    QSharedPointer<PackageDto> detailStruct(QString no);
 
-    bool waitingForSend(uint id);
+    bool Step1_Full(uint packId);
+//
+    bool Step1_Calculated(uint packId);
+    // 等待包裹标识数据发送到 拼板工位
+    bool Step2_Waiting4PackNo_PanelSockStation(uint packId);
+    bool Step2_SentPackNo_PanelSockStation(uint packId);
+    bool Step2_SentPackNo_WaitinMeasuringHeight(uint packId);
+    bool Step2_GotMeasuringHeight(uint packId, uint height);
 
-    bool sent(uint id, QString message = "");
+    bool Step3_Waiting4ScanToleranceValue(uint packId, QString message = "");
+    bool Step3_SentScanToleranceValue(uint packId);
 
-    bool finish(uint id);
+    bool Step4_Waiting4SendWorkData(uint packId);
+    bool Step4_SentWorkData(uint packId, QString message = "");
 
-    bool beginPrint(uint id);
+        // bool Step2_Waiting4MeasuringHeight(uint packId);
+    //bool Step4_Finish(uint packId);
 
-    bool sentToPrinter(uint id);
+    bool beginPrint(uint packId);
 
-    bool finishPrint(uint id);
+    bool sentToPrinter(uint packId);
+
+    bool finishPrint(uint packId);
 
     // 完成了扫码
     bool panelScanned(QString upi);
@@ -181,7 +351,10 @@ signals:
 
 private:
     void refreshLastID();
-    bool updateStatus(uint id, PackBLL::StatusEnum status, QString message = "");
+    bool updateStatus(uint packId,
+                      PackageDto::StatusEnum status,
+                      QString message = "",
+                      QMap<QString, QVariant> updates = QMap<QString, QVariant>{});
 
 private:
     static PackBLL *m_packBll;
@@ -193,6 +366,8 @@ private:
     QString tableName = "pack";
 
     QStringList dbColumnNames;
+
+    int m_pageSize = 26;
 };
 
 #endif // PACKBLL_H

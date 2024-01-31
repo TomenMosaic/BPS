@@ -240,6 +240,83 @@ QSharedPointer<Row> TableDAL::getRow(int row)
     return this->p_rowList.at(row);
 }
 
+QSharedPointer<Row> TableDAL::getRow(QMap<QString, QVariant> conditions){
+    //1. 在现有缓存数据中查询
+    for (int i = 0; i< this->p_rowList.size(); i++){
+        auto row = this->p_rowList[i];
+        bool isContain = false;
+         for(const QString key : conditions.keys()){
+             if (row->data(key) !=  conditions[key]){
+                 isContain = false;
+                 continue;
+             }
+         }
+         if (isContain){
+             return row;
+         }
+    }
+
+    //
+    // 3.1 构建字段列表字符串，若this->p_fieldList为空则选择所有字段(*)
+    QString fields = this->p_fieldList.isEmpty() ? "*" : ("`" + this->p_fieldList.join("`, `") + "`");
+
+    // 3.2 初始化查询命令
+    QString cmd = QString("SELECT %1 FROM `%2`").arg(fields, this->p_tableName);
+
+    // 4. 处理查询条件
+    if (!conditions.isEmpty()) {
+        QStringList conditionParts;
+        for (auto it = conditions.constBegin(); it != conditions.constEnd(); ++it) {
+            auto tmp = QString("`%1` = '%2'")
+                    .arg(it.key(), it.value().toString());
+            conditionParts.append(tmp);
+        }
+        QString condition = conditionParts.join(" AND ");
+        cmd += " WHERE " + condition;
+    }
+
+    // 5. 排序和分页
+    // 5.1 如果提供了orderBy参数，将其添加到查询命令中
+    if (!this->p_orders.isEmpty()) {
+        QString orderby = this->p_orders.join(" , ");
+        cmd += " ORDER BY " + orderby;
+    }
+
+    // 6. 执行查询
+    QSqlQuery query;
+    if (!query.exec(cmd)) {
+        // 处理查询失败的情况
+        QString errorMsg = QString("Run SQL CMD=%1---error:%2").arg(cmd, query.lastError().text()).toUtf8();
+        emit error(query.lastError().text());
+        CLOG_ERROR(errorMsg.toUtf8());
+        qWarning() << Q_FUNC_INFO << __LINE__ << query.lastError().text() << " CMD:" << cmd;
+        return nullptr;
+    }
+
+    // 尝试获取第一行
+    if (query.next()) {
+        QVariantList rowVals;
+        for (const auto& fieldName : qAsConst(this->p_fieldList)) {
+            rowVals.append(query.value(fieldName));
+        }
+        QSharedPointer<Row> row(new Row(this, this->p_fieldList, rowVals));
+
+        // 确保没有其他行
+        if (query.next()) {
+            // 如果有额外的行，处理错误或逻辑
+            qWarning() << "More than one row returned for the query.";
+            return nullptr;
+        }
+        return row;
+    } else {
+        // 如果没有行返回
+        qWarning() << "No rows returned for the query.";
+        return nullptr;
+    }
+
+    return nullptr;
+}
+
 QStandardItemModel *TableDAL::getModel()
 {
     QStandardItemModel *model = new QStandardItemModel;
@@ -391,7 +468,7 @@ void TableDAL::update(QSharedPointer<Row>row, const QMap<QString, QVariant>& pri
             QString value = VarToString(row->data(colIndex));
             if (!value.isEmpty()) {
                 QString placeholder = QString(":where_%1").arg(fieldName);
-                whereConditions.append(QString("%1='%2'").arg(placeholder, value));
+                whereConditions.append(QString("%1=%2").arg(fieldName, placeholder));
                 params.insert(placeholder, value);  // 在参数映射中添加值
             }
         }
@@ -572,39 +649,6 @@ QString TableDAL::currentTime()
     return QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss.zzz");
 }
 
-/*
- * 有逻辑错误，不建议使用
-void TableDAL::addNewRow(QStringList nameList, QStringList strList)
-{
-    QList<QVariant> varList;
-    for(const QString &str : strList) {
-        varList.append(QVariant(str));
-    }
-    TableDAL::addNewRow(nameList, varList);
-}
-
-void TableDAL::addNewRow(QStringList nameList, QList<QVariant> valList)
-{
-    QVariantList lastValueList;
-    for(int index = 0;index<this->p_fieldList.length();index++)
-    {
-        QString fieldName = this->p_fieldList.at(index);
-        int nameIndex = nameList.indexOf(fieldName);
-        if(nameIndex!=-1)
-        {
-            lastValueList.append(valList.at(nameIndex));
-        }
-        else
-        {
-            lastValueList.append(QVariant());
-        }
-    }
-    QSharedPointer<Row>row = QSharedPointer<Row>(new Row(this,this->p_fieldList,lastValueList));
-    this->p_rowList.append(row);
-}
-
-*/
-
 QStringList TableDAL::toStringList(QVariantList variantList)
 {
     QStringList strList;
@@ -681,8 +725,8 @@ QVariantList Row::toVariantList(QList<int>colList)
 }
 
 int Row::col(QString fieldName)
-{
-    return fieldName.indexOf(fieldName);
+{    
+    return this->fieldList.indexOf(fieldName);
 }
 
 QVariant Row::data(int col)

@@ -5,6 +5,7 @@
 #include "quihelper.h"
 
 #include "common/FullScreenMask.h"
+#include "common/LoadingWidget.h"
 #include "ExcelReader.h"
 
 #include <QList>
@@ -15,10 +16,18 @@ FullScreenMask* FullScreenMask::m_instance = nullptr;
 // 导入板件数据
 void frmMain::on_btnImport_clicked()
 {
+    // 弹窗选择文件
     QString fileName = QFileDialog::getOpenFileName(this, tr("Open File"), "", tr("Excel Files (*.xlsx *.xls)"));
     if (fileName.isEmpty()) {
         return;
     }
+
+    // 提示文本
+    //LoadingWidget loadingWidget(nullptr);
+    //loadingWidget.show();
+    QString message = "板件数据导入开始...";
+    //loadingWidget.setInfo(message);
+    this->m_customStatusBar->setInfoText(message);
 
     // 列序号 map
     auto mappings = g_config->getPrePackConfig().getImportMappings();
@@ -30,14 +39,17 @@ void frmMain::on_btnImport_clicked()
     }
 
     // 解析导入的文件
+    message = "文件解析中...";
+    //loadingWidget.setInfo(message);
+    this->m_customStatusBar->setInfoText(message);
     auto varsList = ExcelReader::readExcel(fileName, columnTypes);
     QList<Panel> importPanels;
     for (const auto& vars: qAsConst(varsList) ){
         Panel panel = Panel();
         for (auto it = vars.constBegin(); it != vars.constEnd(); ++it) {
-           auto propertyName = columnTypes2[it.key()].propertyName;
-           auto var = it.value();
-           panel.setProperty(propertyName, var);
+            auto propertyName = columnTypes2[it.key()].propertyName;
+            auto var = it.value();
+            panel.setProperty(propertyName, var);
         }
         importPanels.append(panel);
     }
@@ -51,10 +63,12 @@ void frmMain::on_btnImport_clicked()
 
     // 切换到 “导入数据” tab 页
     this->ui->tabYFB->setCurrentIndex(1);
+    QFileInfo fileInfo(fileName);
+    this->m_customStatusBar->setInfoText(fileInfo.fileName() + " 数据导入成功！");
 }
 
 // 绑定板件列表数据到 QTableView
-void frmMain::page_yfb_panelDataBinding(){
+void frmMain::page_yfb_panelDataBinding(){   
     // table ------
     this->ui->tbImportPanels->verticalHeader()->setVisible(false); // 显示表头
 
@@ -249,7 +263,7 @@ void frmMain::page_yfb_tvAlgorithmPackages_DataBinding(){
     this->ui->tvAlgorithmPackages->verticalHeader()->setVisible(false); // 显示表头
 
     this->m_algorithmPackagesModel = new QStandardItemModel(this);
-    this->m_algorithmPackagesModel->setHorizontalHeaderLabels({ "ID", "包号", "尺寸", "数量"}); // 列头
+    this->m_algorithmPackagesModel->setHorizontalHeaderLabels({ "ID", "包号", "尺寸", "板件数量"}); // 列头
     this->ui->tvAlgorithmPackages->setModel(m_algorithmPackagesModel);
 
     this->m_algorithmPackagesModel->setRowCount(0); // ??
@@ -283,7 +297,7 @@ void frmMain::page_yfb_tvAlgorithmPackages_DataBinding(){
         colIndex++;
 
         // total
-        QStandardItem *totalItem = new QStandardItem(package.getPanelTotal());
+        QStandardItem *totalItem = new QStandardItem(QString::number(package.getPanelTotal()));
         totalItem->setTextAlignment(Qt::AlignCenter);
         itemList.insert(colIndex, totalItem);
         colIndex++;
@@ -307,19 +321,54 @@ void frmMain::page_yfb_tvAlgorithmPackages_DataBinding(){
             return ;
         }
 
-        // 包裹id
+        //1. 包裹id
         QModelIndex modelIndex = this->m_algorithmPackagesModel->index(rowIndex, 0);
         int packId = this->m_algorithmPackagesModel->data(modelIndex).toInt();
 
-        // 当前选中包裹
+        //2. 显示 当前选中包裹对应的板件列表
+        PackageAO* currentPackage = nullptr;
         if (packId <= 0){
+            currentPackage = &m_algorithmPackages[rowIndex];
             page_yfb_tvAlgorithmPanles_DataBinding(this->m_algorithmPackages[rowIndex].getPanels());
         }else{
             for (auto& package : this->m_algorithmPackages) {
                 if (package.id == packId){
+                    currentPackage = &package;
                    page_yfb_tvAlgorithmPanles_DataBinding(package.getPanels());
                    break;
                 }
+            }
+        }
+
+        //3. 显示预览图
+        if (currentPackage != nullptr){
+            this->ui->tabAlgorithmPreview->clear(); // 清空 QTabWidget 中的所有 tabs
+            QSize tabSize = this->ui->tabAlgorithmPreview->size(); // 获取 tab 的容器的大小
+
+            //3.1. 计算缩放因子
+            qreal scaleX = tabSize.width() / qreal(currentPackage->length);
+            qreal scaleY = tabSize.height() / qreal(currentPackage->width);
+            qreal scaleFactor = qMin(scaleX, scaleY) * 0.94;
+
+            //3.2. 遍历层，在tab中创建新的tab，tab的内容是预览图
+            for (int i = 0; i < currentPackage->layers.size(); ++i) {
+                const Layer &layer = currentPackage->layers[i];
+                QGraphicsView *view = getLayerView(layer,currentPackage->length, currentPackage->width, scaleFactor );
+
+                // 创建每个 tab 的页面 widget
+                QWidget *tabPage = new QWidget();
+                QVBoxLayout *layout = new QVBoxLayout(tabPage);
+                layout->setContentsMargins(0, 0, 0, 0); // 设置边距为 0
+                layout->addWidget(view); // 将 view 添加到 tabPage 的布局中
+                tabPage->setLayout(layout);
+
+                // 设置 QGraphicsView 缩放
+               // view->setSceneRect(scene->itemsBoundingRect()); // 调整视图的场景矩形以适应所有项的边界
+                // view->fitInView(scene->itemsBoundingRect(), Qt::KeepAspectRatio); // 缩放视图以适应所有内容
+
+                // 添加新的 tab，页签名字为层号
+                QString tabLabel = QString("第 %1 层").arg(i + 1);
+                this->ui->tabAlgorithmPreview->addTab(tabPage, tabLabel);
             }
         }
 
@@ -352,18 +401,32 @@ void frmMain::on_btnAlgorithm_clicked()
 
     // 切换到 “计算结果” tab 页
     this->ui->tabYFB->setCurrentIndex(2);
+
+    // 设置当前选中的包裹
+    if (this->m_algorithmPackagesModel->rowCount() > 0){
+        QModelIndex modelIndex = this->m_algorithmPackagesModel->index(0, 1);
+        //QItemSelectionModel *selectionModel = this->ui->tvPackList->selectionModel();
+        //selectionModel->select(modelIndex, QItemSelectionModel::Select | QItemSelectionModel::Rows);
+        this->ui->tvAlgorithmPackages->setSelectionBehavior(QAbstractItemView::SelectRows);
+        this->ui->tvAlgorithmPackages->setCurrentIndex(modelIndex);
+    }
+
+    // 提示
+    this->m_customStatusBar->setInfoText("计算结束！");
 }
 
 void frmMain::on_pushButton_clicked()
 {
     // 保存到数据库
-    this->m_packBll->insertByPackStructs(this->m_algorithmPackages,
-                                        PackBLL::PackTypeEnum::PackType_PrePackaging);
+    QList<PackageDto> groups;
+    for (auto& obj : this->m_algorithmPackages){
+        auto dto = PackageDto(obj, PackageDto::StatusEnum::Status_Step1_Calculated);
+        groups.append(dto);
+    }
+    this->m_packBll->insertByPackStructs(groups);
 
     // 导出按钮enable
     this->ui->btnExport->setEnabled(true);
-
-    //TODO 在状态栏显示计算结果保存成功
 }
 
 void frmMain::on_btnExport_clicked()

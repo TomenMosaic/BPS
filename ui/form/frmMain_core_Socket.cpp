@@ -53,11 +53,19 @@ void frmMain::onTcpReadyRead() {
         qDebug() << "Received data:" << data; // 打印数据
 
         //
-        this->parseSocketClientData(data);
+        this->parseSocketClientData(data, "");
 
         // 根据需要发送响应给客户端
         clientSocket->write("ok");
     }
+}
+
+QString cleanIp(const QString& oIp) {
+    QString ip = oIp;
+    if (ip.startsWith("::ffff:")) {
+        return ip.mid(7); // 移除 IPv4-mapped IPv6 地址前缀
+    }
+    return ip.remove('[').remove(']'); // 移除 IPv6 地址的方括号
 }
 
 void frmMain::handlerWebSocketNewConnection()
@@ -69,28 +77,40 @@ void frmMain::handlerWebSocketNewConnection()
 
     QWebSocket *clientSocket = m_webSocketServer->nextPendingConnection();
     if (clientSocket) {
-        QString clientIp = clientSocket->peerAddress().toString();
+        QString clientIp = cleanIp(clientSocket->peerAddress().toString());
         qDebug() << "New WebSocket client connected:" << clientIp;
         m_webSocketClients[clientIp] = clientSocket;  // 使用映射存储客户端，以IP为键
-        this->m_customStatusBar->setTooltip(this->StatusBar_IconName_Socket, m_webSocketClients.keys().join("\n")); // socket 连接客户端列表
 
+        //
+        QStringList messages =  m_webSocketClients.keys();
+        if (g_config->getMeasuringStationConfig().isOpen){
+            for (QString& key : messages){
+                auto entryIndex = this->getScanEntryIndex(key);
+                key += " 进板口" + QString::number(entryIndex+1);
+            }
+        }
+        this->m_customStatusBar->
+                setTooltip(this->StatusBar_IconName_Socket, messages.join("\n")); // socket 连接客户端列表
+
+        // 文本类型数据
         connect(clientSocket, &QWebSocket::textMessageReceived, this, [this, clientSocket](const QString &message) {
-            QString clientIp = clientSocket->peerAddress().toString();
+             QString clientIp = cleanIp(clientSocket->peerAddress().toString());
             qDebug() << "Client:" << clientIp << ", Received data:" << message; // 打印数据
 
             // 现在您可以知道是哪个客户端发送的消息
-            bool isSuccess = this->parseSocketClientData(message);
+            bool isSuccess = this->parseSocketClientData(message, clientIp);
             if (!isSuccess) {
                 qWarning() << "json parse error from client:" << clientIp;
             }
         });
 
+        // 二进制类型的数据
         connect(clientSocket, &QWebSocket::binaryMessageReceived, this, [this, clientSocket](const QByteArray &binaryMessage) {
-            QString clientIp = clientSocket->peerAddress().toString();
+             QString clientIp = cleanIp(clientSocket->peerAddress().toString());
             qDebug() << "Client:" << clientIp << ", Received data:" << binaryMessage.size(); // 打印数据
 
             // 现在您可以知道是哪个客户端发送的消息
-            bool isSuccess = this->parseSocketClientData(binaryMessage);
+            bool isSuccess = this->parseSocketClientData(binaryMessage, clientIp);
             if (!isSuccess) {
                 qWarning() << "json parse error from client:" << clientIp;
             }
@@ -101,7 +121,16 @@ void frmMain::handlerWebSocketNewConnection()
             clientSocket->deleteLater();
             m_webSocketClients.remove(clientIp);  // 断开连接时移除客户端
 
-            this->m_customStatusBar->setTooltip(this->StatusBar_IconName_Socket, m_webSocketClients.keys().join("\n")); // socket 连接客户端列表
+            //
+            QStringList messages =  m_webSocketClients.keys();
+            if (g_config->getMeasuringStationConfig().isOpen){
+                for (QString& key : messages){
+                    auto entryIndex = this->getScanEntryIndex(key);
+                    key += " 进板口" + QString::number(entryIndex+1);
+                }
+            }
+            this->m_customStatusBar->
+                    setTooltip(this->StatusBar_IconName_Socket, messages.join("\n")); // socket 连接客户端列表
         });
     } else {
         qWarning() << "Failed to retrieve client socket from the server.";
@@ -132,7 +161,7 @@ void frmMain::handler4PanelBarccode()
     }
 }
 
-bool frmMain::parseSocketClientData(const QByteArray &binaryMessage)
+bool frmMain::parseSocketClientData(const QByteArray &binaryMessage, QString clientIp)
 {
     QTextCodec *codec;
     QString decodedString;
@@ -157,7 +186,7 @@ bool frmMain::parseSocketClientData(const QByteArray &binaryMessage)
             break;
         }
 
-        bool isSuccess = this->parseSocketClientData(decodedString);
+        bool isSuccess = this->parseSocketClientData(decodedString, clientIp);
         if (!isSuccess){
             qWarning() << "json parse error!";
         }
@@ -166,8 +195,9 @@ bool frmMain::parseSocketClientData(const QByteArray &binaryMessage)
     return false;
 }
 
-bool frmMain::parseSocketClientData(QString message)
+bool frmMain::parseSocketClientData(QString message, QString clientIp)
 {
+    //1. 解析包裹数据
     // 打印数据
     qDebug() << "Received data: " << message;
 
@@ -217,61 +247,22 @@ bool frmMain::parseSocketClientData(QString message)
     }
 
     // 计算包裹
-    Package pack = this->m_algorithm->createLayers(panels);
+    PackageAO pack = this->m_algorithm->createLayers(panels);
     pack.no = packNo;
     pack.customerName = customerName;
-    pack.orderNo = orderNo;
+    pack.orderNo = orderNo;    
+    PackageDto packDto(pack, PackageDto::Status_Step1_Calculated); // 传输对象
+    packDto.originIp = clientIp;
 
     // 创建包裹数据
-    int newPackId = this->m_packBll->insertByPackStruct(pack);
+    int newPackId = this->m_packBll->insertByPackStruct(packDto);
     this->initForm_PackDataBinding(); // 必须运行一下，否则后面再 运行update status的时候会报错
 
     // 赋值
-    pack.id = newPackId;
+    pack.id = packDto.id = newPackId;
 
-    // 检查当前包裹是否需要等待扫码 增加预值
-    bool isWaitingForAction = false;
-    for(const auto& waitingCondition: qAsConst(this->m_waitingConditions)){
-        QString script = pack.getScript(waitingCondition.Condition);
-
-        // 执行字符串脚本
-        QScriptEngine engine;
-        bool result = engine.evaluate(script).toBool();
-        if (result){
-            // 日志
-            QList<QString> condtionMsgs;
-            condtionMsgs.append("threshold name:"+waitingCondition.Name);
-            condtionMsgs.append("action:"+waitingCondition.action);
-            qDebug() << QString("pack (%1, %2, %3x%4x%5) ").
-                        arg(QString::number(pack.id),
-                            pack.no,
-                            QString::number(pack.length),
-                            QString::number(pack.width),
-                            QString::number(pack.height))
-                     << condtionMsgs.join(",");
-
-            // logs
-            message += QString("waiting condition name: %1, %2 ; \n").
-                    arg(waitingCondition.Name, condtionMsgs.join(","));
-
-            // 如果是 扫码就更新包裹的 状态
-            if (waitingCondition.action == ConditionDto::ActionEnum::scan){
-                this->m_packBll->waitingForScan(newPackId, condtionMsgs.join(","));
-                pack.needsScanConfirmation = true;
-                pack.pendingScan = true;
-                isWaitingForAction = true;
-                break;
-            }
-        }
-    }
-    // 等待发送
-    if (!isWaitingForAction){
-        this->m_packBll->waitingForSend(newPackId);
-    }
-    this->initForm_PackDataBinding();
-
-    // 加入队列
-    this->enqueueTask(pack);
+    //2. 流转
+    this->runFlow(packDto);
 
     // 成功处理
     return true;

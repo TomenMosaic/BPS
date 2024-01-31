@@ -146,6 +146,16 @@ void AppConfig::loadFromIni(QString &filePath)
         m_prePackConfig.setTemplate(m_globalSettings->value("exportTemplate").toString(), false);
     }
     m_globalSettings->endGroup();
+
+    // 测量站
+    m_globalSettings->beginGroup("MeasuringStation");
+    this->m_measuringStationConfig.isOpen =  m_globalSettings->value("isOpen").toBool();
+    if (this->m_measuringStationConfig.isOpen){
+        m_measuringStationConfig.modbusTcpClientIp = m_globalSettings->value("modbusTcpClientIp").toString();
+        m_measuringStationConfig.modbusTcpClientPort = m_globalSettings->value("modbusTcpClientPort").toUInt();
+        m_measuringStationConfig.scanEntries = m_globalSettings->value("scanEntries").toString().split(",");
+    }
+    m_globalSettings->endGroup();
 }
 
 void AppConfig::save()
@@ -241,6 +251,16 @@ void AppConfig::save()
     m_globalSettings->setValue("exportTemplate", m_prePackConfig.exportTemplate);
     m_globalSettings->endGroup();
 
+    // 测量站
+    m_globalSettings->beginGroup("MeasuringStation");
+    m_globalSettings->setValue("isOpen", this->m_measuringStationConfig.isOpen);
+    if (this->m_measuringStationConfig.isOpen){
+        m_globalSettings->setValue("modbusTcpClientIp", m_measuringStationConfig.modbusTcpClientIp);
+        m_globalSettings->setValue("modbusTcpClientPort", m_measuringStationConfig.modbusTcpClientPort);
+        m_globalSettings->setValue("scanEntries", m_measuringStationConfig.scanEntries.join(","));
+    }
+    m_globalSettings->endGroup();
+
     // 确保设置被写入文件
     m_globalSettings->sync();
 
@@ -276,6 +296,10 @@ PackTemplateConfig  AppConfig::getPackTemplateConfig(){
 
 YFBConfig AppConfig::getPrePackConfig(){
     return m_prePackConfig;
+}
+
+MeasuringStationConfig AppConfig::getMeasuringStationConfig(){
+    return m_measuringStationConfig;
 }
 
 void  AppConfig::setWorkConfig(WorkConfig workConfig){
@@ -338,6 +362,40 @@ void AppConfig::setPrePackConfig(YFBConfig yfbConfig){
 
     // 如果有更改，则保存配置
     if (hasChanged) {
+        save();
+    }
+}
+
+void AppConfig::setMeasuringStationConfig(MeasuringStationConfig msConfig){
+    bool hasChanged = false;
+    if (msConfig.isOpen != this->m_measuringStationConfig.isOpen){
+        this->m_measuringStationConfig.isOpen = msConfig.isOpen;
+        hasChanged = true;
+    }
+
+    if (msConfig.isOpen){
+        if (msConfig.modbusTcpClientIp != this->m_measuringStationConfig.modbusTcpClientIp){
+            this->m_measuringStationConfig.modbusTcpClientIp = msConfig.modbusTcpClientIp;
+            hasChanged = true;
+        }
+        if (msConfig.modbusTcpClientPort != this->m_measuringStationConfig.modbusTcpClientPort){
+            this->m_measuringStationConfig.modbusTcpClientPort = msConfig.modbusTcpClientPort;
+            hasChanged = true;
+        }
+        if (msConfig.scanEntries.size() != this->m_measuringStationConfig.scanEntries.size()){
+            this->m_measuringStationConfig.scanEntries = msConfig.scanEntries;
+            hasChanged = true;
+        }else{
+            for (int i = 0 ; i < msConfig.scanEntries.size(); i++){
+                if (this->m_measuringStationConfig.scanEntries[i] != msConfig.scanEntries[i]){
+                    this->m_measuringStationConfig.scanEntries[i] = msConfig.scanEntries[i];
+                    hasChanged = true;
+                }
+            }
+        }
+    }
+
+    if (hasChanged){
         save();
     }
 }

@@ -5,6 +5,7 @@ QT += network websockets
 QT += sql
 QT += script
 QT += axcontainer
+QT += serialbus
 
 TARGET      = bps
 TEMPLATE    = app
@@ -46,3 +47,17 @@ include ($$PWD/../plugin/QXlsx-1.4.6/QXlsx/QXlsx.pri)
 
 # qt speesh
 QT += texttospeech
+
+# boost stacktrace
+# LIBS += -ldbghelp -lole32
+INCLUDEPATH += E:\Projects\boost_1_84_0
+LIBS += -LE:\Projects\boost_1_84_0\stage\lib
+INCLUDEPATH += E:\Projects\libbacktrace-master
+LIBS += -LE:\Projects\libbacktrace-master\.libs -lbacktrace
+## unix: DEFINES += BOOST_STACKTRACE_USE_ADDR2LINE
+# DEFINES += BOOST_STACKTRACE_USE_BACKTRACE
+
+
+# QMAKE_CXXFLAGS += -g
+
+

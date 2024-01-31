@@ -155,6 +155,8 @@ public:
 
     QSharedPointer<Row> getRow(int row);
 
+    QSharedPointer<Row> getRow(QMap<QString, QVariant> conditions);
+
     QStringList getRowStrs(int row);
 
     QVariantList getRowVars(int row);
