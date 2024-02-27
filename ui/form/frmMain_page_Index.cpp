@@ -24,8 +24,6 @@ void onTreeItemClicked(QTreeWidgetItem *item, int /* column */) {
 }
 
 void frmMain::initForm_PackDataBinding(bool isReload){
-    this->m_algorithmPackages[100];
-
     ui->tvPackList->verticalHeader()->setVisible(false); // 显示表头
     m_packModel = new QStandardItemModel(this);
 
@@ -119,7 +117,7 @@ void frmMain::initForm_PackDataBinding(bool isReload){
                   statusValue == PackageDto::StatusEnum::Status_Step2_Waiting4MeasuringHeight ||
                   statusValue == PackageDto::StatusEnum::Status_Step2_Waiting4SendPackNo ||
                   statusValue == PackageDto::StatusEnum::Status_Step3_Waiting4ScanTolerance ||
-                  statusValue == PackageDto::StatusEnum::Status_Step4_WaitingForSend){ // 等待扫码录入预值时，变为黄色
+                  statusValue == PackageDto::StatusEnum::Status_Step4_WaitingForSend){ // 等待扫码录入容差时，变为黄色
             color = QColor("#ffffe0");
         }
         for (QStandardItem *item : itemList) {

@@ -115,7 +115,7 @@ private:
 
     // 处理键盘钩子获取到的扫码数据
     void handleScannedData(const QString &data);
-    void handleScannedData_YZ(const QString &data); // 预值处理
+    void handleScannedData_RC(const QString &data); // 容差处理
     void handleScannedData_Barcode(const QString &data); // 条码信息处理
 
     // 包裹列表中的右键菜单
@@ -245,9 +245,9 @@ private:
     // 轮询等待队列的定时器 是否作业中
     bool m_waitingQueue_timer_isProcess = false;
 
-    // 和预值的对应关系
+    // 和容差的对应关系
     QMap<QString, DimensionThresholds> m_orderThreshold;
-    // 预值条件列表
+    // 容差条件列表
     QList<ConditionDto> m_thresholdConditions;
     // 箱型条件列表
     QList<ConditionDto> m_packTemplateConditions;

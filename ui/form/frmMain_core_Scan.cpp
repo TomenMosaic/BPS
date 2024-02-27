@@ -52,31 +52,28 @@ bool frmMain::workFlow_WaitingForScan_ToleranceValues(PackageDto& pack){
     return isWaitingForAction;
 }
 
-void frmMain::handleScannedData_YZ(const QString &scannedData){
+void frmMain::handleScannedData_RC(const QString &scannedData){
     // 是否等待队列为空，如果为空就退出
-    if (this->m_waitingQueue.isEmpty()){
+    /* if (this->m_waitingQueue.isEmpty()){
         return;
-    }
+    } */
 
-    // 解析条码中的数据，格式为“[ysbc,{DataCLass},{Value}]”
-    // 例如 ysbc,hyz,10  标识了这是一个识别码，高度预值为10
+    // 解析条码中的数据，格式为“[ysbc,{几号口},{容差类型},{容差值}]”
+    // 例如 ysbc,1,hrc,10 ，1号口，高度的容差值为 10
     QList<QString> array = scannedData.split(",");
-    QString head = array[0];
+    QString head = array[0].toLower();
     if (head != "ysbc"){
         qWarning() << "二维码格式错误！";
         return;
     }
-    QString type = array[1]; // 判断类型，比如 hyz 高度预值（mchyz 每层高度预值），ls 层数
-    QString threshold = array[2];
+    int entryIndex = array[1].toInt();
+    QString type = array[2]; // 判断类型，比如 hyz 高度容差（mchyz 每层高度容差），ls 层数
+    QString threshold = array[3];
 
-    // 根据信息更新订单对应的预值
-   QSharedPointer<PackageDto> pack;
-    for (auto& queue : this->m_entryQueues){
-        pack = queue.peekIf([](const PackageDto &x) {
-           return x.status == PackageDto::StatusEnum::Status_Step2_Waiting4MeasuringHeight;
-       });
-    }
-    if (!pack) {
+    // 根据信息更新订单对应的容差
+
+    QSharedPointer<PackageDto> pack = this->m_entryQueues[entryIndex-1].peek();
+    if (!pack || pack->status != PackageDto::StatusEnum::Status_Step3_Waiting4ScanTolerance) {
         qWarning() << "没有测量容差的包裹！";
         return;
     }
@@ -89,14 +86,14 @@ void frmMain::handleScannedData_YZ(const QString &scannedData){
     }
 
     // 获取表达式 //TODO 又赋值了一次，没有必要
-    if (type == "hyz"){ // 高度预值
+    if (type == "hrc"){ // 总高度容差
         this->m_orderThreshold[key].heightThreshold = threshold;
-    }else if(type == "mchyz"){ // 每层高度的预值
+    }else if(type == "mchrc"){ // 每层高度的容差
         QString thresholdExpression =  QString("%1*{LayerCount}").arg(threshold);
         this->m_orderThreshold[key].heightThreshold = thresholdExpression;
-    }else if(type == "wyz"){ // 宽度预值
+    }else if(type == "wrc"){ // 宽度容差
         this->m_orderThreshold[key].widthThreshold = threshold;
-    }else if(type == "lyz"){ // 长度预值
+    }else if(type == "lrc"){ // 长度容差
         this->m_orderThreshold[key].lengthThreshold = threshold;
     }
 
@@ -121,7 +118,7 @@ void frmMain::handleScannedData_Barcode(const QString &scannedData){
             return;
         }
 
-        //TODO  提示错误
+        //TODO 提示错误
         qWarning() << scannedData << " 没有查询到对应的板件 / 包裹数据！";
         return;
     }
@@ -179,7 +176,7 @@ void frmMain::handleScannedData(const QString &data) {
     QString scannedData = data.toLower();
 
     if (scannedData.startsWith("ysbc")){
-        handleScannedData_YZ(scannedData);
+        handleScannedData_RC(scannedData);
     }else{
         handleScannedData_Barcode(scannedData);
     }

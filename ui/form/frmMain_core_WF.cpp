@@ -129,27 +129,33 @@ void frmMain::runFlow(PackageDto& packDto, PackageDto::StatusEnum* targetStatus)
     // 更新状态值
     packDto.status = nextStatus;
     // 写入队列
-    if (packDto.status == PackageDto::StatusEnum::Status_Step2_Waiting4SendPackNo){
+    if (packDto.status == PackageDto::StatusEnum::Status_Step2_Waiting4SendPackNo
+            || packDto.status == PackageDto::StatusEnum::Status_Step3_Waiting4ScanTolerance){
         this->m_entryQueues[scanEntryIndex].enqueue(packDto);
     }else{
-        this->m_entryQueues[scanEntryIndex].modifyIf(
+        // 更新入口的队列中对应包裹的信息
+        if (g_config->getMeasuringStationConfig().isOpen){
+            this->m_entryQueues[scanEntryIndex].modifyIf(
+                        [packDto](const PackageDto &x) { return x.id == packDto.id; },
+            [packDto](PackageDto &x) {
+                x.status = packDto.status; // 状态
+                if (x.height != packDto.height){
+                    x.height = packDto.height;
+                }
+            });
+        }
+    }
+    // 更新等待队列中对应包裹的信息
+    if (g_config->getMeasuringStationConfig().isOpen){
+        this->m_waitingQueue.modifyIf(
                     [packDto](const PackageDto &x) { return x.id == packDto.id; },
         [packDto](PackageDto &x) {
-            x.status = packDto.status;
+            x.status = packDto.status; // 状态
             if (x.height != packDto.height){
                 x.height = packDto.height;
             }
         });
     }
-    // 更新队列中的状态
-    this->m_waitingQueue.modifyIf(
-                [packDto](const PackageDto &x) { return x.id == packDto.id; },
-    [packDto](PackageDto &x) {
-        x.status = packDto.status;
-        if (x.height != packDto.height){
-            x.height = packDto.height;
-        }
-    });
 
     // 更新UI
     this->initForm_PackDataBinding();
@@ -162,14 +168,14 @@ void frmMain::sendFileToHotFolder(const PackageDto &originPackage) {
     QString packTemaplte = g_config->getPackTemplateConfig().defaultTemplate;
     QScriptEngine engine;// 执行字符串脚本
 
-    // 查找预值
+    // 查找容差
     QString message;
     for(const auto& threshold : qAsConst(this->m_thresholdConditions)){
         QString script = originPackage.getScript(threshold.Condition);
 
         bool result = engine.evaluate(script).toBool();
         if (result){
-            // 基本的预值
+            // 基本的容差
             int tLength = 0, tWidth = 0, tHeight = 0;
 
             // 表达式
@@ -189,7 +195,7 @@ void frmMain::sendFileToHotFolder(const PackageDto &originPackage) {
                 tHeight += tmpHeight;
             }
 
-            // 加上最终的预值
+            // 加上最终的容差
             package.length += tLength;
             package.width += tWidth;
             package.height += tHeight;
@@ -270,13 +276,13 @@ void frmMain::sendFileToHotFolder(const PackageDto &originPackage) {
                     arg(condtionMsgs.join(","));
 
         }else{
-            qWarning() << key + "对应 扫码预值为空";
+            qWarning() << key + "对应 扫码容差为空";
         }
     }
 
     // 箱型规则
     for(const auto& condition : qAsConst(this->m_packTemplateConditions)){
-        // 要使用最新的尺寸来进行计算，增加了预值后长宽高都可能会改变
+        // 要使用最新的尺寸来进行计算，增加了容差后长宽高都可能会改变
         QString script = package.getScript(condition.Condition);
 
         bool result = engine.evaluate(script).toBool();

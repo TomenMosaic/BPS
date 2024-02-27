@@ -682,7 +682,7 @@ background-color: rgb(255, 85, 127);</string>
            <item>
             <widget class="QGroupBox" name="groupBox_2">
              <property name="title">
-              <string> 预值配置</string>
+              <string> 容差配置</string>
              </property>
              <layout class="QVBoxLayout" name="verticalLayout_6">
               <item>

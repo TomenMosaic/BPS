@@ -26,6 +26,15 @@ public:
         return queue.isEmpty();
     }
 
+    void clear(){
+        while(true){
+            auto item = dequeue();
+            if (!item){
+                return;
+            }
+        }
+    }
+
     // 向队列添加元素
     void enqueue(const T& item) {
         //QMutexLocker locker(&mutex);
@@ -70,12 +79,12 @@ public:
     }
 
     // 从队列取出元素
-    T dequeue() {
+    QSharedPointer<T> dequeue() {
         //QMutexLocker locker(&mutex);
         if (queue.isEmpty()) {
-            throw std::runtime_error("队列为空");
+            return QSharedPointer<T>();
         }
-        return queue.dequeue();
+        return QSharedPointer<T>(new T(queue.dequeue()));
     }
 
     /**

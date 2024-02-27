@@ -17,9 +17,35 @@ void frmMain::initQueue(){
         this->m_entryQueues.append(queue);
     }
 
+    // 初始化队列
+    auto rows = this->m_packBll->getCacheList();
+    for (int i = rows.size()-1; i >= 0; i--){
+        auto row = rows[i];
+        auto dto = this->m_packBll->convertRow2Package(row);
+        if (dto->status == PackageDto::StatusEnum::Status_Step4_Finish){
+            this->m_waitingQueue.clear();
+            for (int entryIndex = 0; i < this->m_entryQueues.size(); i++){
+                this->m_entryQueues[i].clear();
+            }
+        }else if (dto->status == PackageDto::StatusEnum::Status_Step4_WaitingForSend){
+            this->m_waitingQueue.enqueue(*dto);
+        }else if (dto->status == PackageDto::StatusEnum::Status_Step3_GotScanTolerance
+                  || dto->status == PackageDto::StatusEnum::Status_Step3_Waiting4ScanTolerance
+                  || dto->status == PackageDto::StatusEnum::Status_Step2_GotMeasuringHeight
+                  || dto->status == PackageDto::StatusEnum::Status_Step2_Waiting4MeasuringHeight
+                  || dto->status == PackageDto::StatusEnum::Status_Step2_Waiting4SendPackNo){
+            auto ip = row->data(PackBLL::PackColEnum::OriginIp).toString();
+            auto entryIndex = this->getScanEntryIndex(ip);
+
+            this->m_entryQueues[entryIndex].enqueue(*dto);
+        }
+    }
+
+    // 状态栏
     QIcon nullIcon;
     this->m_customStatusBar->
             addIcon(nullIcon, this->StatusBar_IconName_Queue, "", nullptr);
+
 }
 
 // 处理队列中的任务
@@ -50,10 +76,13 @@ void frmMain::processTasks()
             // 当状态处于“获取测高数据”之后时
             else if (head->status >= PackageDto::StatusEnum::Status_Step2_GotMeasuringHeight){
                 auto item = q.dequeue(); // 完成了上面操作后再出队，确保队列中的元素都处理完成
-                if (item.id != head->id){
-                    throw std::runtime_error("出队数据 与 队列头部数据不匹配！");
+                if (item){
+                    if (item->id != head->id){
+                        throw std::runtime_error("出队数据 与 队列头部数据不匹配！");
+                    }
+                    this->m_waitingQueue.enqueue(*item); // 加入到发送队列
                 }
-                this->m_waitingQueue.enqueue(item); // 加入到发送队列
+
             }
         }
 

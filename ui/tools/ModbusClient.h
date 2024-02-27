@@ -68,6 +68,35 @@ public:
         }
     }
 
+    bool checkConnect(){
+        const int maxRetryCount = 6; // 最大重试次数
+        int retryCount = 0; // 当前重试次数
+
+        QString serverAddress = m_modbusClient->connectionParameter(QModbusDevice::NetworkAddressParameter).toString();
+        int port = m_modbusClient->connectionParameter(QModbusDevice::NetworkPortParameter).toInt();
+
+        while (retryCount < maxRetryCount) {
+            if (!m_modbusClient || m_modbusClient->state() != QModbusDevice::ConnectedState) {
+                qDebug() << "Modbus client is not connected. Trying to reconnect... Retry count:" << retryCount + 1;
+                if (listen(serverAddress, port)) {
+                    qDebug() << "Successfully connected to Modbus device.";
+                    return true; // 连接成功，返回 true
+                } else {
+                    ++retryCount; // 连接失败，增加重试计数
+                    qDebug() << "Failed to reconnect. Waiting for next retry...";
+                }
+            } else {
+                if (retryCount > 0){
+                    qDebug() << "Modbus client is already connected.";
+                }
+                return true; // 已连接，返回 true
+            }
+        }
+
+        qDebug() << "Exceeded maximum retry attempts. Unable to connect to Modbus device.";
+        return false; // 达到最大重试次数，返回 false
+    }
+
     void printReadValues(const QList<CommunicationField> &fields, const QList<QVariant> &outValues) {
         QMap<int, QVariant> changedValues; // 使用 startAddress 作为键
         for (int i = 0; i < fields.size(); i++) {
@@ -124,8 +153,7 @@ public:
                               std::function<void(bool, QList<QVariant>)> callback,
                               int serverAddress = 1) {
         // 首先检查 Modbus 客户端的连接状态
-        if (!m_modbusClient || m_modbusClient->state() != QModbusDevice::ConnectedState) {
-            qDebug() << "Modbus client is not connected.";
+        if (!checkConnect()) {
             callback(false, QList<QVariant>{}); // 使用回调报告错误
             return;
         }
@@ -172,8 +200,7 @@ public:
 
     bool readHoldingRegistersSync(const QList<CommunicationField> &fields, QList<QVariant> &outValues, int serverAddress = 1) {
         // 检查Modbus客户端的连接状态
-        if (!m_modbusClient || m_modbusClient->state() != QModbusDevice::ConnectedState) {
-            qDebug() << "Modbus client is not connected.";
+        if (!checkConnect()) {
             return false;
         }
 
@@ -253,8 +280,7 @@ public:
         }
 
         // 首先检查 Modbus 客户端的连接状态
-        if (!m_modbusClient || m_modbusClient->state() != QModbusDevice::ConnectedState) {
-            qDebug() << "Modbus client is not connected.";
+        if (!checkConnect()) {
             callback(false); // 使用回调报告错误
             return;
         }
@@ -304,8 +330,7 @@ public:
 
     bool writeRegisterSync(const CommunicationField &field, int serverAddress = 1) {
 
-        if (!m_modbusClient || m_modbusClient->state() != QModbusDevice::ConnectedState) {
-            qDebug() << "Modbus client is not connected.";
+        if (!checkConnect()) {
             return false;
         }
 
@@ -322,8 +347,7 @@ public:
             return false;
         }
 
-        if (!m_modbusClient || m_modbusClient->state() != QModbusDevice::ConnectedState) {
-            qDebug() << "Modbus client is not connected.";
+        if (!checkConnect()) {
             return false;
         }
 
@@ -408,6 +432,10 @@ public:
         // 读取并校验写入结果
         QList<QVariant> readValues;
         bool isReadSuccess = readHoldingRegistersSync(fields, readValues, serverAddress);
+        if (readValues.size() != fields.size()){
+            qWarning() << "读取验证数据错误！" << readValues;
+            return false;
+        }
         for (int i = 0; i < fields.size(); ++i) {
             if (fields[i].value != readValues[i]) {
                 qWarning() << "Verification failed for field at address" << fields[i].startAddress;

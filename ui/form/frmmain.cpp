@@ -220,7 +220,7 @@ void frmMain::handlePackTableMenuAction(QAction *action, const QModelIndex &inde
     }
 
     // 获取选中行的数据
-    QModelIndex idIndex  = this->m_packModel->index(index.row(), 0);
+    QModelIndex idIndex  = this->m_packModel->index(index.row(), PackBLL::PackColEnum::ID);
     int packId = this->m_packModel->data(idIndex).toInt();
 
     if (action->text() == "重新发送") {
@@ -232,7 +232,19 @@ void frmMain::handlePackTableMenuAction(QAction *action, const QModelIndex &inde
         }
 
     } else if (action->text() == "删除") {
-        // 处理操作2
+        // 在队列中剔除
+        this->m_waitingQueue.dequeueIf([packId](const PackageDto &x) {
+            return x.id == packId;
+        });
+        for (int i = 0; i < this->m_entryQueues.size(); i ++){
+            this->m_entryQueues[i].dequeueIf([packId](const PackageDto &x) {
+                return x.id == packId;
+            });
+        }
+
+        // 在数据中剔除
+        this->m_packBll->remove(packId);
+        this->initForm_PackDataBinding();
     } else if (action->text() == "详情") {
         // 处理操作2
     }

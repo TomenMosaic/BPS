@@ -122,6 +122,11 @@ bool ConditionBLL::createOrUpdate(ConditionDto& conditionDto){
                         isModify = true;
                     }
 
+                    if (curRow->data(ConditionBLL::action).toInt() != conditionDto.action){
+                        curRow->setData(ConditionBLL::action, QString::number(conditionDto.action));
+                        isModify = true;
+                    }
+
                     if (conditionDto.Type == ConditionDto::TypeEnum::packTemplateCondition){
                         if (curRow->data(ConditionBLL::packTemplate).toString() != conditionDto.packTemplate){
                             curRow->setData(ConditionBLL::packTemplate, conditionDto.packTemplate);

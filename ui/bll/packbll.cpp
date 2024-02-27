@@ -204,10 +204,28 @@ int PackBLL::insertByPackStruct(const PackageDto& package){
 }
 
 bool PackBLL::remove(uint packId){
+    for(int index = 0;index<dal.getRowCount();index++)
+    {
+        QSharedPointer<Row> curRow = dal.getRow(index);
+        if(curRow->data(PackBLL::ID).toInt()!=packId)
+            continue;
+
+        // 更新数据库字段
+        curRow->setData(PackBLL::PackColEnum::RemovedAt, QDateTime::currentDateTime()); // 更新removeat字段
+        QMap<QString, QVariant> wheres;
+        wheres[this->dbColumnNames.at(PackBLL::PackColEnum::ID)] = packId; // 使用主键
+        dal.update(curRow, wheres);
+
+        // 删除model中对应记录
+        dal.removeRow(curRow);
+
+        return true;
+    }
+
     return false;
 }
 
-QSharedPointer<PackageDto> convertRow2Package(QSharedPointer<Row> packageRow){
+QSharedPointer<PackageDto>  PackBLL::convertRow2Package(QSharedPointer<Row> packageRow){
     if (packageRow.isNull()){
         return nullptr;
     }

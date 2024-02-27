@@ -75,7 +75,7 @@ QList<QPair<int, int>> convertValuesToStruct(const QList<CommunicationField> &li
         int id = idField->value.toInt(&idOk);
         int height = heightField->value.toInt(&heightOk);
 
-        if (!idOk || !heightOk || id <= 0 || height <= 0){
+        if (!idOk || !heightOk || id <= 0){
             continue; // 如果值无效或转换失败，跳过当前迭代
         }
 
@@ -143,7 +143,7 @@ void frmMain::startMeasuringStationServer()
                     // 更新到指定的包裹的高度，包裹的状态进行流转
                     for (QPair<int, int> pair : newMeasuredValues) {
                         int packId = pair.first;
-                        int height = pair.second;
+                        // int height = pair.second;
 
                         // 查找包裹记录，判断当前包裹是否已经更新了高度
                         auto pack = this->m_packBll->getPackageByDbId(packId);
@@ -151,13 +151,13 @@ void frmMain::startMeasuringStationServer()
                             qWarning() << "查找不到 pack id（" << packId << "）对应的数据！";
                             continue;
                         }
-                        if (pack->status >= PackageDto::StatusEnum::Status_Step2_GotMeasuringHeight){
+                    /*    if (pack->status >= PackageDto::StatusEnum::Status_Step2_GotMeasuringHeight){
                             qWarning() << "包裹（" << packId << "）测高数据已更新！";
                             continue;
-                        }
+                        } */
 
                         // 更新对应包裹的高度
-                        pack->height = height; // 赋值传递过去
+                        // pack->height = height; // 赋值传递过去
                         auto targetStatus = PackageDto::StatusEnum::Status_Step2_GotMeasuringHeight;
                         this->runFlow(*pack, &targetStatus);
 

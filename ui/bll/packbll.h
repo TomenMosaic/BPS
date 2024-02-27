@@ -23,27 +23,48 @@ public:
         // 齐套
         Status_Step1_ScanFull = 119,
 
-        // 等待发送包裹条码到测量站
-        Status_Step2_Waiting4SendPackNo = 210,
-        // 完成发送包裹条码数据
-        Status_Step2_SentPackNo = 219,
-        // 等待测量高度
-        Status_Step2_Waiting4MeasuringHeight = 220,
-        // 已经获取到了高度的测量值
+
+        /**
+         * @brief 等待容差值的录入
+         */
+        Status_Step3_Waiting4ScanTolerance = 210,
+        /**
+         * @brief 容差值已获取
+         */
+        Status_Step3_GotScanTolerance = 219,
+
+
+        /**
+         * @brief 等待发送包裹标识到测量站，测量站得到标识信息后，对应的板剁才会进入线体
+         */
+        Status_Step2_Waiting4SendPackNo = 220,
+        /**
+         * @brief 完成发送包裹条码数据
+         */
+        Status_Step2_SentPackNo = 229,
+
+
+        /**
+         * @brief 等待测量高度
+         */
+        Status_Step2_Waiting4MeasuringHeight = 260,
+        /**
+         * @brief 已经获取到了高度的测量值
+         */
         Status_Step2_GotMeasuringHeight = 269,
 
 
-        // 等待容差值的录入
-        Status_Step3_Waiting4ScanTolerance = 310,
-        // 容差值已获取
-        Status_Step3_GotScanTolerance = 319,
-
-
-        // 等待发送
+        /**
+         * @brief 等待发送加工数据到裁纸机
+         */
         Status_Step4_WaitingForSend = 900,
-        // 已发送
+        /**
+         * @brief 已发送
+         */
         Status_Step4_Sent = 919,
-        // 结束
+        /**
+         * @brief 结束
+         */
         Status_Step4_Finish = 999
     };
     enum PrintStatusEnum{
@@ -344,6 +365,8 @@ public:
 
     // 完成了扫码
     bool panelScanned(QString upi);
+
+    QSharedPointer<PackageDto> convertRow2Package(QSharedPointer<Row> packageRow);
 
     static PackBLL *getInstance(QObject *parent = nullptr);
 

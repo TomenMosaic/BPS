@@ -38,9 +38,9 @@ void frmMain::initForm_SettingDataBinding(){
         }
     }
 
-    // 预值列表
+    // 容差列表
     this->m_tbAddValueConditionsModel = new QStandardItemModel(this);
-    this->m_tbAddValueConditionsModel->setHorizontalHeaderLabels({ "ID", "规则名称", "条件", "长度预值", "宽度预值", "高度预值"}); // 列头
+    this->m_tbAddValueConditionsModel->setHorizontalHeaderLabels({ "ID", "规则名称", "条件", "长度容差", "宽度容差", "高度容差"}); // 列头
     ui->tbAddValueConditions->setModel(this->m_tbAddValueConditionsModel);
     this->m_tbAddValueConditionsModel->setRowCount(0); // ??
     for(int index = 0;index<this->m_thresholdConditions.length();index++)
@@ -159,13 +159,13 @@ void frmMain::on_btnSendConfiguration_clicked()
                 dto.ID = 0;
                 dto.Type = ConditionDto::TypeEnum::waitingCondition;
                 dto.Condition = condition;
-                dto.action = ConditionDto::ActionEnum::scan;
                 this->m_waitingConditions.append(dto);
             }
+            this->m_waitingConditions[0].action = ConditionDto::ActionEnum::scan;
             this->m_conditionBll->createOrUpdate(m_waitingConditions[0]);
         }
 
-        //2.2. 预值规则
+        //2.2. 容差规则
         int rowCount = this->m_tbAddValueConditionsModel->rowCount();
         for (int row = 0; row < rowCount; ++row) {
             int colIndex = 0;
@@ -295,7 +295,7 @@ void frmMain::on_isWaiting4Scan_stateChanged(int arg1)
 
 void frmMain::on_btnInsert_AddValueCondition_clicked(bool checked)
 {
-    // 在预值列表中增加一行
+    // 在容差列表中增加一行
     int columnCount = this->m_tbAddValueConditionsModel->columnCount(); // 获取模型的列数
     QList<QStandardItem*> itemList;
     for (int i = 0; i < columnCount; ++i) {
