@@ -248,6 +248,9 @@ QSharedPointer<PackageDto>  PackBLL::convertRow2Package(QSharedPointer<Row> pack
     pack->status = status;
     pack->flowNo = packageRow->data(PackBLL::PackColEnum::FlowNo).toInt();
 
+    pack->layerTotal = packageRow->data(PackBLL::PackColEnum::LayerTotal).toInt();
+    pack->panelTotal = packageRow->data(PackBLL::PackColEnum::PanelTotal).toInt();
+
     return pack;
 }
 

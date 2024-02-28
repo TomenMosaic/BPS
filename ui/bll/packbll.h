@@ -193,16 +193,27 @@ public:
 
     QString getKey() const {
         QSet<QString> panelLocationSet; // 位置
+        QSet<QString> panelNames; // 位置
         for (const Panel& panel: qAsConst(panels)){
-            panelLocationSet.insert(panel.location);
+            if (panel.location != ""){
+                panelLocationSet.insert(panel.location);
+            }
+            if (panel.name != ""){
+                panelNames.insert(panel.name);
+            }
         }
 
-        QString result ;
+        // key
+        QString result = orderNo + "_";
         if (customerName.isEmpty() && panelLocationSet.isEmpty()){
-            result = no;
+            result += no;
         }else{
-            result = QString("%1_%2").arg(customerName, panelLocationSet.toList().join(","));
+            result += QString("%1_%2").arg(customerName, panelLocationSet.toList().join(","));
         }
+        if (panelNames.size() > 1){
+            result += "_" + panelNames.toList().join(",");
+        }
+
         return result;
     }
 

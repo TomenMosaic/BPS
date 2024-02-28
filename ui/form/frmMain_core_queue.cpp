@@ -19,13 +19,14 @@ void frmMain::initQueue(){
 
     // 初始化队列
     auto rows = this->m_packBll->getCacheList();
-    for (int i = rows.size()-1; i >= 0; i--){
+    for (int i = rows.size()-1; i >= 0; --i){
         auto row = rows[i];
         auto dto = this->m_packBll->convertRow2Package(row);
-        if (dto->status == PackageDto::StatusEnum::Status_Step4_Finish){
+        if (dto->status == PackageDto::StatusEnum::Status_Step4_Finish
+         || dto->status == PackageDto::StatusEnum::Status_Step4_Sent){
             this->m_waitingQueue.clear();
-            for (int entryIndex = 0; i < this->m_entryQueues.size(); i++){
-                this->m_entryQueues[i].clear();
+            for (int entryIndex = 0; entryIndex < this->m_entryQueues.size(); entryIndex++){
+                this->m_entryQueues[entryIndex].clear();
             }
         }else if (dto->status == PackageDto::StatusEnum::Status_Step4_WaitingForSend){
             this->m_waitingQueue.enqueue(*dto);
@@ -37,7 +38,9 @@ void frmMain::initQueue(){
             auto ip = row->data(PackBLL::PackColEnum::OriginIp).toString();
             auto entryIndex = this->getScanEntryIndex(ip);
 
-            this->m_entryQueues[entryIndex].enqueue(*dto);
+            if (entryIndex >= 0 && entryIndex < this->m_entryQueues.size() ){
+                this->m_entryQueues[entryIndex].enqueue(*dto);
+            }
         }
     }
 

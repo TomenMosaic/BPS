@@ -208,10 +208,14 @@ bool frmMain::send2PanelDockingStation(uint dbPackId, int panelDockingStationInd
 
     // 同步发送数据
     try {
-        bool isSuccess = this->m_modbusClient->writeRegisterSync(*idField)
-                && this->m_modbusClient->writeRegisterSync(*markField);
+        bool isSuccess = this->m_modbusClient->writeRegisterSync(*idField);
         if (!isSuccess) {
-            qWarning() << "发送数据到拼板口失败！";
+            qWarning() << "发送数据到拼板口失败 1！";
+            return isSuccess;
+        }
+        isSuccess = this->m_modbusClient->writeRegisterSync(*markField);
+        if (!isSuccess) {
+            qWarning() << "发送数据到拼板口失败 2！";
         }
         return isSuccess;
     } catch (const std::exception& e) {

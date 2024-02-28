@@ -129,20 +129,22 @@ void frmMain::runFlow(PackageDto& packDto, PackageDto::StatusEnum* targetStatus)
     // 更新状态值
     packDto.status = nextStatus;
     // 写入队列
-    if (packDto.status == PackageDto::StatusEnum::Status_Step2_Waiting4SendPackNo
-            || packDto.status == PackageDto::StatusEnum::Status_Step3_Waiting4ScanTolerance){
-        this->m_entryQueues[scanEntryIndex].enqueue(packDto);
-    }else{
-        // 更新入口的队列中对应包裹的信息
-        if (g_config->getMeasuringStationConfig().isOpen){
-            this->m_entryQueues[scanEntryIndex].modifyIf(
-                        [packDto](const PackageDto &x) { return x.id == packDto.id; },
-            [packDto](PackageDto &x) {
-                x.status = packDto.status; // 状态
-                if (x.height != packDto.height){
-                    x.height = packDto.height;
-                }
-            });
+    if (scanEntryIndex >= 0 && scanEntryIndex < this->m_entryQueues.size()){
+        if (packDto.status == PackageDto::StatusEnum::Status_Step2_Waiting4SendPackNo
+                || packDto.status == PackageDto::StatusEnum::Status_Step3_Waiting4ScanTolerance){
+            this->m_entryQueues[scanEntryIndex].enqueue(packDto);
+        }else{
+            // 更新入口的队列中对应包裹的信息
+            if (g_config->getMeasuringStationConfig().isOpen){
+                this->m_entryQueues[scanEntryIndex].modifyIf(
+                            [packDto](const PackageDto &x) { return x.id == packDto.id; },
+                [packDto](PackageDto &x) {
+                    x.status = packDto.status; // 状态
+                    if (x.height != packDto.height){
+                        x.height = packDto.height;
+                    }
+                });
+            }
         }
     }
     // 更新等待队列中对应包裹的信息
