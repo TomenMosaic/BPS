@@ -21,7 +21,9 @@ enum WorkModeEnum
     // 扫描板件
     board_scan = 1,
     // 通过socket获取数据
-    socat = 2
+    socat = 2,
+    // 直接测量尺寸
+    measuring_size = 3
 };
 
 // 标签打印机类型

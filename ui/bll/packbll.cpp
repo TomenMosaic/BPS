@@ -275,6 +275,10 @@ bool PackBLL::Step1_Full(uint packId){
     return updateStatus(packId, PackageDto::StatusEnum::Status_Step1_ScanFull);
 }
 
+bool PackBLL::Step1_GotMeasuringSize_Error(uint packId){
+    return updateStatus(packId, PackageDto::StatusEnum::Status_Step1_GotMeasuringSize_Error);
+}
+
 bool PackBLL::Step2_Waiting4PackNo_PanelSockStation(uint packId){
     return updateStatus(packId, PackageDto::StatusEnum::Status_Step2_Waiting4SendPackNo);
 }

@@ -29,11 +29,14 @@ void frmMain::initForm_PackDataBinding(bool isReload){
 
     // 列头
     QStringList headers = {"ID", "包号", "尺寸"};
-    if (g_config->getWorkConfig().workMode == WorkModeEnum::socat){
-        headers.append("总数");
-    }else{
-        headers.append("已扫/总数");
+    if (g_config->getWorkConfig().workMode != WorkModeEnum::measuring_size){
+        if (g_config->getWorkConfig().workMode == WorkModeEnum::socat){
+            headers.append("总数");
+        } else {
+            headers.append("已扫/总数");
+        }
     }
+
     if (g_config->getMeasuringStationConfig().isOpen){
         headers.append("拼版口");
     }
@@ -59,9 +62,15 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         colIndex++;
 
         // no
-        QStandardItem *noItem = new QStandardItem(row->data(PackBLL::No).toString());
-        noItem->setTextAlignment(Qt::AlignCenter);
-        itemList.insert(colIndex, noItem);
+        if (g_config->getWorkConfig().workMode == WorkModeEnum::measuring_size){
+            QStandardItem *idItem2 = new QStandardItem(row->data(PackBLL::ID).toString());
+            idItem2->setTextAlignment(Qt::AlignCenter);
+            itemList.insert(colIndex, idItem2);
+        }else{
+            QStandardItem *noItem = new QStandardItem(row->data(PackBLL::No).toString());
+            noItem->setTextAlignment(Qt::AlignCenter);
+            itemList.insert(colIndex, noItem);
+        }
         colIndex++;
 
         // size
@@ -75,20 +84,23 @@ void frmMain::initForm_PackDataBinding(bool isReload){
         colIndex++;
 
         // 已扫码 / 总数
-        auto scanCount = row->data(PackBLL::ScanPanelCount).toUInt();
-        auto total = row->data(PackBLL::PanelTotal).toUInt();
-        QString formattedCount;
-        if (g_config->getWorkConfig().workMode == WorkModeEnum::socat){
-            formattedCount = QString::number(total);
-        }else{
-            formattedCount = QString("%1 / %2")
-                    .arg(QString::number(scanCount))
-                    .arg(QString::number(total));
+        uint scanCount = 0;
+        if (g_config->getWorkConfig().workMode != WorkModeEnum::measuring_size){
+            scanCount = row->data(PackBLL::ScanPanelCount).toUInt();
+            auto total = row->data(PackBLL::PanelTotal).toUInt();
+            QString formattedCount;
+            if (g_config->getWorkConfig().workMode == WorkModeEnum::socat){
+                formattedCount = QString::number(total);
+            }else{
+                formattedCount = QString("%1 / %2")
+                        .arg(QString::number(scanCount))
+                        .arg(QString::number(total));
+            }
+            QStandardItem *countItem = new QStandardItem(formattedCount);
+            countItem->setTextAlignment(Qt::AlignCenter);
+            itemList.insert(colIndex, countItem);
+            colIndex++;
         }
-        QStandardItem *countItem = new QStandardItem(formattedCount);
-        countItem->setTextAlignment(Qt::AlignCenter);
-        itemList.insert(colIndex, countItem);
-        colIndex++;
 
         // 拼板口
         if (g_config->getMeasuringStationConfig().isOpen){
@@ -119,6 +131,8 @@ void frmMain::initForm_PackDataBinding(bool isReload){
                   statusValue == PackageDto::StatusEnum::Status_Step3_Waiting4ScanTolerance ||
                   statusValue == PackageDto::StatusEnum::Status_Step4_WaitingForSend){ // 等待扫码录入容差时，变为黄色
             color = QColor("#ffffe0");
+        }else if (statusValue < 0){ // 错误变红
+            color = QColor("#ff00e0");
         }
         for (QStandardItem *item : itemList) {
             item->setBackground(color);

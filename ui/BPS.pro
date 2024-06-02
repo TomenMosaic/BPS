@@ -50,10 +50,10 @@ QT += texttospeech
 
 # boost stacktrace
 # LIBS += -ldbghelp -lole32
-INCLUDEPATH += E:\Projects\boost_1_84_0
+INCLUDEPATH += D:\Projects\boost_1_84_0
 LIBS += -LE:\Projects\boost_1_84_0\stage\lib
-INCLUDEPATH += E:\Projects\libbacktrace-master
-LIBS += -LE:\Projects\libbacktrace-master\.libs -lbacktrace
+INCLUDEPATH += D:\Projects\libbacktrace-master
+LIBS += -LD:\Projects\libbacktrace-master\.libs -lbacktrace
 ## unix: DEFINES += BOOST_STACKTRACE_USE_ADDR2LINE
 # DEFINES += BOOST_STACKTRACE_USE_BACKTRACE
 

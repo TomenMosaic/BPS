@@ -201,12 +201,17 @@ void frmMain::initForm()
     // 配置页面数据绑定
     this->initForm_SettingDataBinding();
 
-    if (g_config->getWorkConfig().workMode == WorkModeEnum::socat){// socket server
-        this->startSocketServer();
-    }
+    if (g_config->getWorkConfig().workMode == WorkModeEnum::measuring_size)
+    {
+        this->startMeasuringStationServer2();
+    }else{
+        if (g_config->getWorkConfig().workMode == WorkModeEnum::socat){// socket server
+            this->startSocketServer();
+        }
 
-    if (g_config->getMeasuringStationConfig().isOpen){ // 打开测量站
-        this->startMeasuringStationServer();
+        if (g_config->getMeasuringStationConfig().isOpen){ // 打开测量站
+            this->startMeasuringStationServer();
+        }
     }
 
     // 初始化队列

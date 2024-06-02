@@ -217,9 +217,9 @@ public:
         QEventLoop loop;
         QTimer timeoutTimer;
         timeoutTimer.setSingleShot(true);
-        connect(reply, &QModbusReply::finished, &loop, &QEventLoop::quit);
         connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
-        timeoutTimer.start(300); // 设置超时时间，例如300毫秒
+        connect(reply, &QModbusReply::finished, &loop, &QEventLoop::quit);
+        timeoutTimer.start(6666); // 设置超时时间，例如300毫秒
         loop.exec();
 
         if (reply->isFinished()) {
@@ -330,10 +330,6 @@ public:
 
     bool writeRegisterSync(const CommunicationField &field, int serverAddress = 1) {
 
-        if (!checkConnect()) {
-            return false;
-        }
-
         // 创建一个包含单个字段的列表
         QList<CommunicationField> fields;
         fields.append(field);
@@ -359,7 +355,7 @@ public:
         for (const auto &field : fields) {
             int fieldEndAddress = field.startAddress + fieldLength(field) - 1;  // 计算字段结束地址
             if (previousEndAddress != -1 && field.startAddress > previousEndAddress) {
-                if (!writeAndVerify(contiguousFields, serverAddress)) {
+                if (!writeAndVerifySync(contiguousFields, serverAddress)) {
                     allWritesSuccessful = false;
                 }
                 contiguousFields.clear();
@@ -371,7 +367,7 @@ public:
 
         // 处理最后一批连续字段
         if (!contiguousFields.isEmpty()) {
-            if (!writeAndVerify(contiguousFields, serverAddress)) {
+            if (!writeAndVerifySync(contiguousFields, serverAddress)) {
                 allWritesSuccessful = false;
             }
         }
@@ -379,9 +375,9 @@ public:
         return allWritesSuccessful;
     }
 
-    bool writeAndVerify(const QList<CommunicationField> &fields, int serverAddress) {
+    bool writeAndVerifySync(const QList<CommunicationField> &fields, int serverAddress) {
         if (fields.isEmpty()) {
-            return true; // 如果没有字段，认为是成功的
+            return false; // 如果没有字段
         }
 
         // 确定写入范围
@@ -410,6 +406,7 @@ public:
         // 发送写请求
         auto *reply = m_modbusClient->sendWriteRequest(writeUnit, serverAddress);
         if (!reply) {
+            qWarning() << "Failed to send write request";
             return false;
         }
 
@@ -417,43 +414,45 @@ public:
         QEventLoop loop;
         QTimer timer;
         timer.setSingleShot(true);
-        connect(reply, &QModbusReply::finished, &loop, &QEventLoop::quit);
         connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
-        timer.start(3000); // 等待3秒
+        connect(reply, &QModbusReply::finished, &loop, &QEventLoop::quit);
+        timer.start(666); // 等待0.666秒
         loop.exec();
 
-        if (reply->isFinished() && reply->error() == QModbusDevice::NoError) {
-            reply->deleteLater();
-        } else {
-            delete reply;
+        bool writeSuccess = (reply->error() == QModbusDevice::NoError);
+        reply->deleteLater();
+
+      /*  if (!writeSuccess) {
+            qWarning() << "Write request failed with error:" << reply->errorString();
             return false;
-        }
+        } */
 
         // 读取并校验写入结果
         QList<QVariant> readValues;
         bool isReadSuccess = readHoldingRegistersSync(fields, readValues, serverAddress);
-        if (readValues.size() != fields.size()){
-            qWarning() << "读取验证数据错误！" << readValues;
+        if (!isReadSuccess || readValues.size() != fields.size()) {
+            qWarning() << "Failed to read or mismatch in read values";
             return false;
         }
+
         for (int i = 0; i < fields.size(); ++i) {
             if (fields[i].value != readValues[i]) {
-                qWarning() << "Verification failed for field at address" << fields[i].startAddress;
+                qWarning() << "Verification failed for field at address " << fields[i].startAddress;
                 return false;
             }
         }
 
-        // 完成日志
+        // 打印成功日志
         QStringList msgSuccess;
-        for (auto field : fields){
+        for (const auto &field : fields) {
             QString msg = QString("name: %1, address: %2, type: %3, value: %4")
-                    .arg(field.name)
-                    .arg(QString::number(field.startAddress))
-                    .arg(field.datatype)
-                    .arg(field.value.toString());
+                            .arg(field.name)
+                            .arg(field.startAddress)
+                            .arg(field.datatype)
+                            .arg(field.value.toString());
             msgSuccess.append(msg);
         }
-        qDebug() << "write success, " << msgSuccess.join(";");
+        qDebug() << "Write success: " << msgSuccess.join("; ");
 
         return true;
     }

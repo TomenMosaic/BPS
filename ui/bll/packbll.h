@@ -23,6 +23,10 @@ public:
         // 齐套
         Status_Step1_ScanFull = 119,
 
+        // 获取尺寸信息成功
+        Status_Step1_GotMeasuringSize = 131,
+        // 获取尺寸信息失败
+        Status_Step1_GotMeasuringSize_Error = -131,
 
         /**
          * @brief 等待容差值的录入
@@ -33,7 +37,6 @@ public:
          */
         Status_Step3_GotScanTolerance = 219,
 
-
         /**
          * @brief 等待发送包裹标识到测量站，测量站得到标识信息后，对应的板剁才会进入线体
          */
@@ -42,8 +45,6 @@ public:
          * @brief 完成发送包裹条码数据
          */
         Status_Step2_SentPackNo = 229,
-
-
         /**
          * @brief 等待测量高度
          */
@@ -52,7 +53,6 @@ public:
          * @brief 已经获取到了高度的测量值
          */
         Status_Step2_GotMeasuringHeight = 269,
-
 
         /**
          * @brief 等待发送加工数据到裁纸机
@@ -67,6 +67,7 @@ public:
          */
         Status_Step4_Finish = 999
     };
+
     enum PrintStatusEnum{
         PrintStatus_Init = 0,
         PrintStatus_Sent = 1,
@@ -132,6 +133,12 @@ public:
             return QStringLiteral("等待齐套");
         case Status_Step1_ScanFull:
             return QStringLiteral("已齐套");
+
+        case Status_Step1_GotMeasuringSize:
+            return QStringLiteral("测量尺寸成功");
+        case Status_Step1_GotMeasuringSize_Error:
+            return QStringLiteral("测量尺寸失败");
+
         case Status_Step2_Waiting4SendPackNo:
             return QStringLiteral("进板信号待发");
         case Status_Step2_SentPackNo:
@@ -351,6 +358,7 @@ public:
     QSharedPointer<PackageDto> detailStruct(QString no);
 
     bool Step1_Full(uint packId);
+    bool Step1_GotMeasuringSize_Error(uint packId);
 //
     bool Step1_Calculated(uint packId);
     // 等待包裹标识数据发送到 拼板工位

@@ -16,6 +16,7 @@ SOURCES += \
     $$PWD/frmMain_core_Scan.cpp \
     $$PWD/frmMain_core_Socket.cpp \
     $$PWD/frmMain_core_Station.cpp \
+    $$PWD/frmMain_core_Station2.cpp \
     $$PWD/frmMain_core_WF.cpp \
     $$PWD/frmMain_core_queue.cpp \
     $$PWD/frmMain_page_Index.cpp \

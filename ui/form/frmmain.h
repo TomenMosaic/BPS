@@ -143,7 +143,13 @@ private slots:
 private:
     // 开始工作站服务
     void startMeasuringStationServer();
+
+    // 开始工作站服务2
+    void startMeasuringStationServer2();
+
     bool send2PanelDockingStation(uint dbPackId, int panelDockingStationIndex);
+    bool send2FeedbackMeasuringSize(uint dbPackId);
+
     bool isAllowWrite2PanelDockingStation(int panelDockingStationIndex);
     int getScanEntryIndex(QString originIp);
 

@@ -12,21 +12,36 @@
 
 void frmMain::initForm_SettingDataBinding(){
     // 加载数据绑定到控件，工作模式 下拉框、开启等待扫码 checkbox、加工文件导出路径 linetext
-    this->ui->cbWorkMode->setCurrentText("接收包裹数据"); // TODO 根据配置文件的值进行实际的选择
+    auto workMode = g_config->getWorkConfig().workMode;
+    if (workMode == WorkModeEnum::socat){
+        this->ui->cbWorkMode->setCurrentText("包裹扫码");
+    }else if (workMode == WorkModeEnum::measuring_size){
+        this->ui->cbWorkMode->setCurrentText("尺寸测量站");
+    }else{
+        this->ui->cbWorkMode->setCurrentText("接收包裹数据");
+    }
     this->ui->isWaiting4Scan->setCheckState(g_config->getWorkConfig().isWaiting4Scan ? Qt::Checked : Qt::Unchecked); // 是否等待扫码
     this->ui->txtHotFolderPath->setText(g_config->getDeviceConfig().importDir); // 裁纸机上的热文件夹路径
 
     // 测量站初始值
-    auto msConfig = g_config->getMeasuringStationConfig();
-    this->ui->isOpenMeasuringStation->setCheckState(msConfig.isOpen ? Qt::Checked : Qt::Unchecked);
-    if (msConfig.isOpen){
-        this->ui->txtModbusTcpClientIp->setText(msConfig.modbusTcpClientIp);
-        this->ui->txtModbusTcpClientPort->setText(QString::number(msConfig.modbusTcpClientPort));
+    if (g_config->getWorkConfig().workMode == WorkModeEnum::measuring_size){
+        this->ui->isWaiting4Scan->setDisabled(true);
+        this->ui->txtWaiting4ScanCondition->setDisabled(true);
+    }else{
+        this->ui->isWaiting4Scan->setDisabled(false);
+        this->ui->txtWaiting4ScanCondition->setDisabled(false);
 
-        if (msConfig.scanEntries.size() >= 1){
-            this->ui->txtScanEntry1->setText(msConfig.scanEntries[0]);
-            if (msConfig.scanEntries.size() >= 2){
-                this->ui->txtScanEntry2->setText(msConfig.scanEntries[1]);
+        auto msConfig = g_config->getMeasuringStationConfig();
+        this->ui->isOpenMeasuringStation->setCheckState(msConfig.isOpen ? Qt::Checked : Qt::Unchecked);
+        if (msConfig.isOpen){
+            this->ui->txtModbusTcpClientIp->setText(msConfig.modbusTcpClientIp);
+            this->ui->txtModbusTcpClientPort->setText(QString::number(msConfig.modbusTcpClientPort));
+
+            if (msConfig.scanEntries.size() >= 1){
+                this->ui->txtScanEntry1->setText(msConfig.scanEntries[0]);
+                if (msConfig.scanEntries.size() >= 2){
+                    this->ui->txtScanEntry2->setText(msConfig.scanEntries[1]);
+                }
             }
         }
     }
@@ -145,6 +160,8 @@ void frmMain::on_btnSendConfiguration_clicked()
             workConfig.workMode = WorkModeEnum::socat;
         }else if (this->ui->cbWorkMode->currentText() == "包裹扫码"){
             workConfig.workMode = WorkModeEnum::pack_scan;
+        }else if (this->ui->cbWorkMode->currentText() == "尺寸测量站"){
+            workConfig.workMode = WorkModeEnum::measuring_size;
         }
         g_config->setWorkConfig(workConfig);
 

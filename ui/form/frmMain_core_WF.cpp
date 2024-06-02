@@ -71,18 +71,27 @@ void frmMain::runFlow(PackageDto& packDto, PackageDto::StatusEnum* targetStatus)
             else {
                 nextStatus = this->runFlow_WaitingForSend(packDto);
             }
-        } else if (targetStatus != nullptr){
+        }else if (targetStatus != nullptr){
             // 当前包裹的状态不能大于目标状态
-            if (packDto.status > *targetStatus){
-                qWarning() << QString("包裹（%1）.（%2) > （%3）")
+            if (*targetStatus > 0 && packDto.status > *targetStatus){
+                qWarning() << QString("包裹（%1）. status（%2) > （%3）")
                               .arg(QString::number(packDto.id))
                               .arg(PackageDto::statusEnumToString(packDto.status))
                               .arg(PackageDto::statusEnumToString(*targetStatus));
                 return;
             }
 
+            // 尺寸错误
+            if(*targetStatus == PackageDto::StatusEnum::Status_Step1_GotMeasuringSize_Error){
+                this->m_packBll->Step1_GotMeasuringSize_Error(packDto.id); // end
+            }
+            // 获取到尺寸
+            else if (*targetStatus == PackageDto::StatusEnum::Status_Step1_GotMeasuringSize){
+                nextStatus = this->runFlow_WaitingForSend(packDto); // 流转到等待发送
+                this->m_waitingQueue.enqueue(packDto); // 插入到队列中
+            }
             // 发送包裹数据到拼板口，等待测量高度
-            if (*targetStatus == PackageDto::StatusEnum::Status_Step2_SentPackNo){
+            else if (*targetStatus == PackageDto::StatusEnum::Status_Step2_SentPackNo){
                 nextStatus = runFlow_send2PanelDockingStation(packDto);
             }
             // 接收到测量站的高度数据，就等待发送到裁纸机
@@ -90,7 +99,7 @@ void frmMain::runFlow(PackageDto& packDto, PackageDto::StatusEnum* targetStatus)
                 // 是否需要测量站
                 if (g_config->getMeasuringStationConfig().isOpen){
                     // 发送数据到裁纸机
-                   this->m_packBll->Step2_GotMeasuringHeight(packDto.id, packDto.height);
+                    this->m_packBll->Step2_GotMeasuringHeight(packDto.id, packDto.height);
 
                     // 更新为待发送状态
                     nextStatus = this->runFlow_WaitingForSend(packDto);
@@ -102,7 +111,7 @@ void frmMain::runFlow(PackageDto& packDto, PackageDto::StatusEnum* targetStatus)
                     throw std::runtime_error(message.toUtf8());
                 }
             }
-             // 接收到扫码的容差值
+            // 接收到扫码的容差值
             else if(*targetStatus == PackageDto::StatusEnum::Status_Step3_GotScanTolerance){
                 // 有测量站的时候，发送包裹数据到拼板口
                 if (g_config->getMeasuringStationConfig().isOpen){
@@ -128,35 +137,38 @@ void frmMain::runFlow(PackageDto& packDto, PackageDto::StatusEnum* targetStatus)
 
     // 更新状态值
     packDto.status = nextStatus;
-    // 写入队列
-    if (scanEntryIndex >= 0 && scanEntryIndex < this->m_entryQueues.size()){
-        if (packDto.status == PackageDto::StatusEnum::Status_Step2_Waiting4SendPackNo
-                || packDto.status == PackageDto::StatusEnum::Status_Step3_Waiting4ScanTolerance){
-            this->m_entryQueues[scanEntryIndex].enqueue(packDto);
-        }else{
-            // 更新入口的队列中对应包裹的信息
-            if (g_config->getMeasuringStationConfig().isOpen){
-                this->m_entryQueues[scanEntryIndex].modifyIf(
-                            [packDto](const PackageDto &x) { return x.id == packDto.id; },
-                [packDto](PackageDto &x) {
-                    x.status = packDto.status; // 状态
-                    if (x.height != packDto.height){
-                        x.height = packDto.height;
-                    }
-                });
+    // 非尺寸测量站才需要运行如下逻辑
+    if (g_config->getWorkConfig().workMode != WorkModeEnum::measuring_size){
+        // 写入队列
+        if (scanEntryIndex >= 0 && scanEntryIndex < this->m_entryQueues.size()){
+            if (packDto.status == PackageDto::StatusEnum::Status_Step2_Waiting4SendPackNo
+                    || packDto.status == PackageDto::StatusEnum::Status_Step3_Waiting4ScanTolerance){
+                this->m_entryQueues[scanEntryIndex].enqueue(packDto);
+            }else{
+                // 更新入口的队列中对应包裹的信息
+                if (g_config->getMeasuringStationConfig().isOpen){
+                    this->m_entryQueues[scanEntryIndex].modifyIf(
+                                [packDto](const PackageDto &x) { return x.id == packDto.id; },
+                    [packDto](PackageDto &x) {
+                        x.status = packDto.status; // 状态
+                        if (x.height != packDto.height){
+                            x.height = packDto.height;
+                        }
+                    });
+                }
             }
         }
-    }
-    // 更新等待队列中对应包裹的信息
-    if (g_config->getMeasuringStationConfig().isOpen){
-        this->m_waitingQueue.modifyIf(
-                    [packDto](const PackageDto &x) { return x.id == packDto.id; },
-        [packDto](PackageDto &x) {
-            x.status = packDto.status; // 状态
-            if (x.height != packDto.height){
-                x.height = packDto.height;
-            }
-        });
+        // 更新等待队列中对应包裹的信息
+        if (g_config->getMeasuringStationConfig().isOpen){
+            this->m_waitingQueue.modifyIf(
+                        [packDto](const PackageDto &x) { return x.id == packDto.id; },
+            [packDto](PackageDto &x) {
+                x.status = packDto.status; // 状态
+                if (x.height != packDto.height){
+                    x.height = packDto.height;
+                }
+            });
+        }
     }
 
     // 更新UI

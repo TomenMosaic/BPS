@@ -249,7 +249,7 @@
       <string notr="true"/>
      </property>
      <property name="currentIndex">
-      <number>2</number>
+      <number>1</number>
      </property>
      <widget class="QWidget" name="pack">
       <layout class="QGridLayout" name="gridLayout_3" columnstretch="3,7">
@@ -575,6 +575,11 @@ background-color: rgb(255, 85, 127);</string>
                   <string>板件扫码</string>
                  </property>
                 </item>
+                <item>
+                 <property name="text">
+                  <string>尺寸测量站</string>
+                 </property>
+                </item>
                </widget>
               </item>
               <item row="1" column="1">
@@ -862,7 +867,7 @@ background-color: rgb(255, 85, 127);</string>
        <item>
         <widget class="QTabWidget" name="tabYFB">
          <property name="currentIndex">
-          <number>0</number>
+          <number>1</number>
          </property>
          <widget class="QWidget" name="tab_3">
           <attribute name="title">
