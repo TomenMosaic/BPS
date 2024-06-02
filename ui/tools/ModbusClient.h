@@ -9,7 +9,8 @@
 #include <QTimer>
 #include <QEventLoop>
 
-class CommunicationField {
+class CommunicationField
+{
 public:
     QString name;
     uint startAddress;
@@ -18,75 +19,118 @@ public:
     QVariant value; // 使用 QVariant 来存储不同类型的值
 
 public:
-    CommunicationField(QString pName, uint pStartAddress, uint pLength, QString pDataType){
+    CommunicationField(QString pName, uint pStartAddress, uint pLength, QString pDataType)
+    {
         this->name = pName;
         this->startAddress = pStartAddress;
         this->length = pLength;
         this->datatype = pDataType;
-        //this->value = pValue;
+        // this->value = pValue;
     }
 };
 
-class ModbusClient : public QObject {
+class ModbusClient : public QObject
+{
     Q_OBJECT
 
 private:
     QMap<int, QVariant> m_cacheValues;
 
 public:
-    ModbusClient(QObject *parent = nullptr): QObject(parent), m_modbusClient(new QModbusTcpClient(this)) {
+    ModbusClient(QObject *parent = nullptr) : QObject(parent), m_modbusClient(new QModbusTcpClient(this))
+    {
         connect(m_modbusClient, &QModbusClient::stateChanged, this, &ModbusClient::onStateChanged);
         connect(m_modbusClient, &QModbusClient::errorOccurred, this, &ModbusClient::onErrorOccurred);
     }
 
-    ~ModbusClient(){
-        if (m_modbusClient->state() == QModbusDevice::ConnectedState) {
+    ~ModbusClient()
+    {
+        if (m_modbusClient->state() == QModbusDevice::ConnectedState)
+        {
             m_modbusClient->disconnectDevice();
         }
     }
 
-    bool listen(const QString &serverAddress, int port){
-        if(!m_modbusClient){
+    /**
+     * @brief 连接到指定的 Modbus 服务器。
+     *
+     * 该函数尝试连接到指定的 Modbus 服务器地址和端口。如果客户端当前未连接，
+     * 则设置连接参数并尝试连接。如果连接成功，则返回 true；否则返回 false。
+     *
+     * @param serverAddress 要连接的服务器地址。
+     * @param port 要连接的服务器端口。
+     * @return 如果连接成功，返回 true；否则返回 false。
+     */
+    bool listen(const QString &serverAddress, int port)
+    {
+        if (!m_modbusClient)
+        {
             return false;
         }
 
-        if (m_modbusClient->state() != QModbusDevice::ConnectedState) {       //判断当前连接状态是否为断开状态
+        // 判断当前连接状态是否为断开状态
+        if (m_modbusClient->state() != QModbusDevice::ConnectedState)
+        {
+            // 设置连接参数：服务器地址和端口
             m_modbusClient->setConnectionParameter(QModbusDevice::NetworkAddressParameter, serverAddress);
             m_modbusClient->setConnectionParameter(QModbusDevice::NetworkPortParameter, port);
 
-            if (!m_modbusClient->connectDevice()) {
-                qDebug()<< "连接modbus设备失败";
+            // 尝试连接设备
+            if (!m_modbusClient->connectDevice())
+            {
+                qDebug() << "连接 modbus 设备失败";
                 return false;
             }
-            else {
-                qDebug()<< "成功连接到modbs设备";
+            else
+            {
+                qDebug() << "成功连接到 modbus 设备";
                 return true;
             }
-        }else{
-            qDebug()<< "modbus client connected!";
+        }
+        else
+        {
+            qDebug() << "modbus 客户端已连接";
             return false;
         }
     }
 
-    bool checkConnect(){
+    /**
+     * @brief 检查 Modbus 客户端的连接状态。
+     *
+     * 该函数检查 Modbus 客户端的连接状态。如果客户端已连接，则返回 true；
+     * 如果客户端未连接，则尝试重新连接。如果重新连接成功，则返回 true；否则返回 false。
+     *
+     * @return 如果客户端已连接或重新连接成功，返回 true；否则返回 false。
+     * @note 如果重新连接失败，将尝试最多 6 次。
+     */
+    bool checkConnect()
+    {
         const int maxRetryCount = 6; // 最大重试次数
-        int retryCount = 0; // 当前重试次数
+        int retryCount = 0;          // 当前重试次数
 
         QString serverAddress = m_modbusClient->connectionParameter(QModbusDevice::NetworkAddressParameter).toString();
         int port = m_modbusClient->connectionParameter(QModbusDevice::NetworkPortParameter).toInt();
 
-        while (retryCount < maxRetryCount) {
-            if (!m_modbusClient || m_modbusClient->state() != QModbusDevice::ConnectedState) {
+        while (retryCount < maxRetryCount)
+        {
+            if (!m_modbusClient || m_modbusClient->state() != QModbusDevice::ConnectedState)
+            {
                 qDebug() << "Modbus client is not connected. Trying to reconnect... Retry count:" << retryCount + 1;
-                if (listen(serverAddress, port)) {
+                if (listen(serverAddress, port))
+                {
                     qDebug() << "Successfully connected to Modbus device.";
                     return true; // 连接成功，返回 true
-                } else {
+                }
+                else
+                {
                     ++retryCount; // 连接失败，增加重试计数
                     qDebug() << "Failed to reconnect. Waiting for next retry...";
                 }
-            } else {
-                if (retryCount > 0){
+            }
+            else
+            {
+                if (retryCount > 0)
+                {
                     qDebug() << "Modbus client is already connected.";
                 }
                 return true; // 已连接，返回 true
@@ -97,63 +141,92 @@ public:
         return false; // 达到最大重试次数，返回 false
     }
 
-    void printReadValues(const QList<CommunicationField> &fields, const QList<QVariant> &outValues) {
+    /**
+     * @brief 读取单个寄存器的值。
+     * @param fields 要读取的寄存器字段。
+     * @param outValues 读取的值。
+     */
+    void printReadValues(const QList<CommunicationField> &fields, const QList<QVariant> &outValues)
+    {
         QMap<int, QVariant> changedValues; // 使用 startAddress 作为键
-        for (int i = 0; i < fields.size(); i++) {
-            const auto& field = fields[i];
-            const auto& value = outValues[i];
+        for (int i = 0; i < fields.size(); i++)
+        {
+            const auto &field = fields[i];
+            const auto &value = outValues[i];
             bool hasChanged = false;
 
-            if (this->m_cacheValues.contains(field.startAddress)) {
+            if (this->m_cacheValues.contains(field.startAddress))
+            {
                 hasChanged = this->m_cacheValues[field.startAddress].toString() != value.toString();
-            } else {
+            }
+            else
+            {
                 hasChanged = true;
             }
 
-            if (hasChanged) {
+            if (hasChanged)
+            {
                 this->m_cacheValues[field.startAddress] = value;
                 changedValues[i] = value; // 使用 index 作为键
             }
         }
 
-        if (!changedValues.isEmpty()) {
+        if (!changedValues.isEmpty())
+        {
             QStringList messages;
-            for (auto it = changedValues.constBegin(); it != changedValues.constEnd(); ++it) {
-                const auto& field = fields[it.key()];
+            for (auto it = changedValues.constBegin(); it != changedValues.constEnd(); ++it)
+            {
+                const auto &field = fields[it.key()];
                 QString msg = QString("name: %1, address: %2, type: %3, value: %4")
-                        .arg(field.name)
-                        .arg(it.key())
-                        .arg(field.datatype)
-                        .arg(it.value().toString());
+                                  .arg(field.name)
+                                  .arg(it.key())
+                                  .arg(field.datatype)
+                                  .arg(it.value().toString());
                 messages.append(msg);
             }
             qDebug() << "read >> " << messages.join(";");
         }
     }
 
-    // 读取单个寄存器
-    void readSingleRegister(const CommunicationField& field,
+    /**
+     * @brief 读取单个寄存器的值。
+     * @param field 要读取的寄存器字段。
+     * @param callback 读取完成后的回调函数。
+     * @param serverAddress 服务器地址。
+     * @note 注意不要在回调函数中调用其他 ModbusClient 的方法，否则会导致timeout的问题。
+     */
+    void readSingleRegister(const CommunicationField &field,
                             std::function<void(bool, QVariant)> callback,
-                            int serverAddress = 1) {
+                            int serverAddress = 1)
+    {
         QList<CommunicationField> fields;
         fields.append(field);
 
         // 调用 readHoldingRegisters，传递封装好的字段列表
-        readHoldingRegisters(fields, [callback, fields](bool success, QList<QVariant> values) {
+        readHoldingRegisters(fields, [callback, fields](bool success, QList<QVariant> values)
+                             {
             if (success) {
                 // 假设 results 中的第一个 QVariant 包含所需的值
                 callback(true, values.first());
             } else {
                 callback(false, 0); // 读取失败或结果为空
-            }
-        }, serverAddress);
+            } }, serverAddress);
     }
 
+    /**
+     * @brief 读取多个寄存器的值。
+     * @param fields 要读取的寄存器字段。
+     * @param callback 读取完成后的回调函数。
+     * @param serverAddress 服务器地址。
+     * @note 注意不要在回调函数中调用其他 ModbusClient 的方法，否则会导致timeout的问题。
+     */
     void readHoldingRegisters(const QList<CommunicationField> &fields,
                               std::function<void(bool, QList<QVariant>)> callback,
-                              int serverAddress = 1) {
+                              int serverAddress = 1)
+    {
         // 首先检查 Modbus 客户端的连接状态
-        if (!checkConnect()) {
+        if (!checkConnect())
+        {
             callback(false, QList<QVariant>{}); // 使用回调报告错误
             return;
         }
@@ -163,18 +236,21 @@ public:
 
         QModbusDataUnit readUnit(QModbusDataUnit::HoldingRegisters, startAddress, endAddress - startAddress);
         auto *reply = m_modbusClient->sendReadRequest(readUnit, serverAddress);
-        if (!reply) {
+        if (!reply)
+        {
             callback(false, QList<QVariant>{});
             return;
         }
 
-        if (reply->isFinished()) {
+        if (reply->isFinished())
+        {
             delete reply;
             callback(false, QList<QVariant>{});
             return;
         }
 
-        connect(reply, &QModbusReply::finished, this, [this, startAddress, reply, fields, callback]() mutable {
+        connect(reply, &QModbusReply::finished, this, [this, startAddress, reply, fields, callback]() mutable
+                {
             //handleReply(reply, fields, startAddress, callback);
             if (reply->error() != QModbusDevice::NoError) {
                 qWarning() << "Modbus Error:" << reply->error() << reply->errorString();
@@ -193,14 +269,21 @@ public:
             // print
             printReadValues(fields, values);
 
-            reply->deleteLater();
-        });
+            reply->deleteLater(); });
     }
 
-
-    bool readHoldingRegistersSync(const QList<CommunicationField> &fields, QList<QVariant> &outValues, int serverAddress = 1) {
+    /**
+     * @brief 读取多个寄存器的值。
+     * @param fields 要读取的寄存器字段。
+     * @param outValues 读取的值。
+     * @param serverAddress 服务器地址。
+     * @return 如果读取成功，返回 true；否则返回 false。
+     */
+    bool readHoldingRegistersSync(const QList<CommunicationField> &fields, QList<QVariant> &outValues, int serverAddress = 1)
+    {
         // 检查Modbus客户端的连接状态
-        if (!checkConnect()) {
+        if (!checkConnect())
+        {
             return false;
         }
 
@@ -209,7 +292,8 @@ public:
 
         QModbusDataUnit readUnit(QModbusDataUnit::HoldingRegisters, startAddress, endAddress - startAddress);
         QModbusReply *reply = m_modbusClient->sendReadRequest(readUnit, serverAddress);
-        if (!reply) {
+        if (!reply)
+        {
             return false;
         }
 
@@ -222,10 +306,13 @@ public:
         timeoutTimer.start(6666); // 设置超时时间，例如300毫秒
         loop.exec();
 
-        if (reply->isFinished()) {
-            if (reply->error() == QModbusDevice::NoError) {
+        if (reply->isFinished())
+        {
+            if (reply->error() == QModbusDevice::NoError)
+            {
                 const QModbusDataUnit unit = reply->result();
-                for (const auto &field : fields) {
+                for (const auto &field : fields)
+                {
                     outValues.append(parseFieldData(unit, field, startAddress));
                 }
 
@@ -234,7 +321,9 @@ public:
 
                 reply->deleteLater();
                 return true;
-            } else {
+            }
+            else
+            {
                 qWarning() << "Modbus Error:" << reply->error() << reply->errorString();
             }
         }
@@ -243,13 +332,22 @@ public:
         return false;
     }
 
-    bool readSingleRegisterSync(CommunicationField field, QVariant &value, int serverAddress = 1) {
+    /**
+     * @brief 读取单个寄存器的值。
+     * @param field 要读取的寄存器字段。
+     * @param value 读取的值。
+     * @param serverAddress 服务器地址。
+     * @return 如果读取成功，返回 true；否则返回 false。
+     */
+    bool readSingleRegisterSync(CommunicationField field, QVariant &value, int serverAddress = 1)
+    {
         QList<CommunicationField> fields;
         fields.append(field);
 
         QList<QVariant> values;
         readHoldingRegistersSync(fields, values);
-        if (!values.isEmpty()) {
+        if (!values.isEmpty())
+        {
             value = values.first();
             return true;
         }
@@ -257,11 +355,17 @@ public:
         return false;
     }
 
-
-    // 写入单个寄存器
+    /**
+     * @brief 写入单个寄存器的值。
+     * @param field 要写入的寄存器字段。
+     * @param callback 写入完成后的回调函数。
+     * @param serverAddress 服务器地址。
+     * @note 注意不要在回调函数中调用其他 ModbusClient 的方法，否则会导致timeout的问题。
+     */
     void writeSingleRegister(CommunicationField field,
                              std::function<void(bool)> callback,
-                             int serverAddress = 1) {
+                             int serverAddress = 1)
+    {
         // 创建一个包含单个字段的列表
         QList<CommunicationField> fields;
         fields.append(field);
@@ -270,17 +374,26 @@ public:
         writeRegisters(fields, callback, serverAddress);
     }
 
-    // 批量写入寄存器的方法
+    /**
+     * @brief 写入多个寄存器的值。
+     * @param fields 要写入的寄存器字段。
+     * @param callback 写入完成后的回调函数。
+     * @param serverAddress 服务器地址。
+     * @note 注意不要在回调函数中调用其他 ModbusClient 的方法，否则会导致timeout的问题。
+     */
     void writeRegisters(QList<CommunicationField> &fields,
                         std::function<void(bool)> callback,
-                        int serverAddress = 1) {
-        if (fields.isEmpty()) {
+                        int serverAddress = 1)
+    {
+        if (fields.isEmpty())
+        {
             callback(false); // 如果字段列表为空，则立即调用回调并返回
             return;
         }
 
         // 首先检查 Modbus 客户端的连接状态
-        if (!checkConnect()) {
+        if (!checkConnect())
+        {
             callback(false); // 使用回调报告错误
             return;
         }
@@ -294,41 +407,58 @@ public:
         QModbusDataUnit writeUnit(type, startAddress, endAddress - startAddress + 1);
 
         // 设置要写入的值
-        for (const auto &field : fields) {
+        for (const auto &field : fields)
+        {
             int index = field.startAddress - startAddress;
 
-            if (field.datatype.toLower() == "int32" || field.datatype.toLower() == "float") {
+            if (field.datatype.toLower() == "int32" || field.datatype.toLower() == "float")
+            {
                 // 假设 field.value 是一个32位整数或浮点数
                 quint32 value = field.value.toUInt();
-                quint16 highWord = value >> 16; // 提取高16位
+                quint16 highWord = value >> 16;   // 提取高16位
                 quint16 lowWord = value & 0xFFFF; // 提取低16位
 
                 // 交换高低字以匹配 CDAB 格式
-                writeUnit.setValue(index, lowWord); // 先写低字
+                writeUnit.setValue(index, lowWord);      // 先写低字
                 writeUnit.setValue(index + 1, highWord); // 再写高字
-            } else {
+            }
+            else
+            {
                 // 对于其他数据类型（例如 int16），直接写入
                 writeUnit.setValue(index, field.value.toUInt());
             }
         }
 
         // 发送写请求
-        if (auto *reply = m_modbusClient->sendWriteRequest(writeUnit, serverAddress)) {
-            if (!reply->isFinished()) {
-                connect(reply, &QModbusReply::finished, this, [this, reply, callback]() {
+        if (auto *reply = m_modbusClient->sendWriteRequest(writeUnit, serverAddress))
+        {
+            if (!reply->isFinished())
+            {
+                connect(reply, &QModbusReply::finished, this, [this, reply, callback]()
+                        {
                     callback(reply->error() == QModbusDevice::NoError); // 回调执行结果
-                    reply->deleteLater();
-                });
-            } else {
+                    reply->deleteLater(); });
+            }
+            else
+            {
                 delete reply;
                 callback(false); // 立即失败回调
             }
-        } else {
+        }
+        else
+        {
             callback(false); // 无法发送请求回调
         }
     }
 
-    bool writeRegisterSync(const CommunicationField &field, int serverAddress = 1) {
+    /**
+     * @brief 写入多个寄存器的值。
+     * @param fields 要写入的寄存器字段。
+     * @param serverAddress 服务器地址。
+     * @return 如果写入成功，返回 true；否则返回 false。
+     */
+    bool writeRegisterSync(const CommunicationField &field, int serverAddress = 1)
+    {
 
         // 创建一个包含单个字段的列表
         QList<CommunicationField> fields;
@@ -337,13 +467,21 @@ public:
         return writeRegistersSync(fields, serverAddress);
     }
 
-
-    bool writeRegistersSync(const QList<CommunicationField> &fields, int serverAddress = 1) {
-        if (fields.isEmpty()) {
+    /**
+     * @brief 写入多个寄存器的值。
+     * @param fields 要写入的寄存器字段。
+     * @param serverAddress 服务器地址。
+     * @return 如果写入成功，返回 true；否则返回 false。
+     */
+    bool writeRegistersSync(const QList<CommunicationField> &fields, int serverAddress = 1)
+    {
+        if (fields.isEmpty())
+        {
             return false;
         }
 
-        if (!checkConnect()) {
+        if (!checkConnect())
+        {
             return false;
         }
 
@@ -352,22 +490,27 @@ public:
         int previousEndAddress = -1;
 
         // 分割为连续的寄存器块并写入
-        for (const auto &field : fields) {
-            int fieldEndAddress = field.startAddress + fieldLength(field) - 1;  // 计算字段结束地址
-            if (previousEndAddress != -1 && field.startAddress > previousEndAddress) {
-                if (!writeAndVerifySync(contiguousFields, serverAddress)) {
+        for (const auto &field : fields)
+        {
+            int fieldEndAddress = field.startAddress + fieldLength(field) - 1; // 计算字段结束地址
+            if (previousEndAddress != -1 && field.startAddress > previousEndAddress)
+            {
+                if (!writeAndVerifySync(contiguousFields, serverAddress))
+                {
                     allWritesSuccessful = false;
                 }
                 contiguousFields.clear();
             }
 
             contiguousFields.append(field);
-            previousEndAddress = fieldEndAddress;  // 更新上一个字段的结束地址
+            previousEndAddress = fieldEndAddress; // 更新上一个字段的结束地址
         }
 
         // 处理最后一批连续字段
-        if (!contiguousFields.isEmpty()) {
-            if (!writeAndVerifySync(contiguousFields, serverAddress)) {
+        if (!contiguousFields.isEmpty())
+        {
+            if (!writeAndVerifySync(contiguousFields, serverAddress))
+            {
                 allWritesSuccessful = false;
             }
         }
@@ -375,8 +518,16 @@ public:
         return allWritesSuccessful;
     }
 
-    bool writeAndVerifySync(const QList<CommunicationField> &fields, int serverAddress) {
-        if (fields.isEmpty()) {
+    /**
+     * @brief 写入并验证多个寄存器的值。
+     * @param fields 要写入的寄存器字段。
+     * @param serverAddress 服务器地址。
+     * @return 如果写入成功并且验证成功，返回 true；否则返回 false。
+     */
+    bool writeAndVerifySync(const QList<CommunicationField> &fields, int serverAddress)
+    {
+        if (fields.isEmpty())
+        {
             return false; // 如果没有字段
         }
 
@@ -386,18 +537,22 @@ public:
         QModbusDataUnit writeUnit(QModbusDataUnit::HoldingRegisters, startAddress, endAddress - startAddress + 1);
 
         // 设置要写入的值
-        for (const auto &field : fields) {
+        for (const auto &field : fields)
+        {
             int index = field.startAddress - startAddress;
 
-            if (field.datatype.toLower() == "int32" || field.datatype.toLower() == "float") {
+            if (field.datatype.toLower() == "int32" || field.datatype.toLower() == "float")
+            {
                 quint32 value = field.value.toUInt();
-                quint16 highWord = value >> 16; // 提取高16位
+                quint16 highWord = value >> 16;   // 提取高16位
                 quint16 lowWord = value & 0xFFFF; // 提取低16位
 
                 // 交换高低字以匹配 CDAB 格式
-                writeUnit.setValue(index, lowWord); // 先写低字
+                writeUnit.setValue(index, lowWord);      // 先写低字
                 writeUnit.setValue(index + 1, highWord); // 再写高字
-            } else {
+            }
+            else
+            {
                 // 对于其他数据类型（例如 int16），直接写入
                 writeUnit.setValue(index, field.value.toUInt());
             }
@@ -405,7 +560,8 @@ public:
 
         // 发送写请求
         auto *reply = m_modbusClient->sendWriteRequest(writeUnit, serverAddress);
-        if (!reply) {
+        if (!reply)
+        {
             qWarning() << "Failed to send write request";
             return false;
         }
@@ -416,27 +572,31 @@ public:
         timer.setSingleShot(true);
         connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
         connect(reply, &QModbusReply::finished, &loop, &QEventLoop::quit);
-        timer.start(666); // 等待0.666秒
+        timer.start(6666); // 等待6.666秒
         loop.exec();
 
         bool writeSuccess = (reply->error() == QModbusDevice::NoError);
         reply->deleteLater();
 
-      /*  if (!writeSuccess) {
+        if (!writeSuccess)
+        {
             qWarning() << "Write request failed with error:" << reply->errorString();
             return false;
-        } */
+        }
 
         // 读取并校验写入结果
         QList<QVariant> readValues;
         bool isReadSuccess = readHoldingRegistersSync(fields, readValues, serverAddress);
-        if (!isReadSuccess || readValues.size() != fields.size()) {
+        if (!isReadSuccess || readValues.size() != fields.size())
+        {
             qWarning() << "Failed to read or mismatch in read values";
             return false;
         }
 
-        for (int i = 0; i < fields.size(); ++i) {
-            if (fields[i].value != readValues[i]) {
+        for (int i = 0; i < fields.size(); ++i)
+        {
+            if (fields[i].value != readValues[i])
+            {
                 qWarning() << "Verification failed for field at address " << fields[i].startAddress;
                 return false;
             }
@@ -444,19 +604,19 @@ public:
 
         // 打印成功日志
         QStringList msgSuccess;
-        for (const auto &field : fields) {
+        for (const auto &field : fields)
+        {
             QString msg = QString("name: %1, address: %2, type: %3, value: %4")
-                            .arg(field.name)
-                            .arg(field.startAddress)
-                            .arg(field.datatype)
-                            .arg(field.value.toString());
+                              .arg(field.name)
+                              .arg(field.startAddress)
+                              .arg(field.datatype)
+                              .arg(field.value.toString());
             msgSuccess.append(msg);
         }
         qDebug() << "Write success: " << msgSuccess.join("; ");
 
         return true;
     }
-
 
 signals:
     void connectionEstablished();
@@ -465,21 +625,33 @@ signals:
 
 private slots:
 
-    // 当 Modbus 客户端状态改变时调用
-    void onStateChanged(QModbusDevice::State state) {
-            // 处理连接状态的改变
-        if (state == QModbusDevice::ConnectedState) {
+    /**
+     * @brief 处理 Modbus 客户端的连接状态改变。
+     * @param state 新的连接状态。
+    */
+    void onStateChanged(QModbusDevice::State state)
+    {
+        // 处理连接状态的改变
+        if (state == QModbusDevice::ConnectedState)
+        {
             emit connectionEstablished();
-        } else if (state == QModbusDevice::UnconnectedState) {
+        }
+        else if (state == QModbusDevice::UnconnectedState)
+        {
             qWarning() << "modbus tcp client unconnected";
             emit connectionClosed();
         }
     }
 
-    // 当 Modbus 客户端发生错误时调用
-    void onErrorOccurred(QModbusDevice::Error error) {
-         // 处理连接过程中发生的错误
-        if (error != QModbusDevice::NoError) {
+    /**
+     * @brief 处理 Modbus 客户端的错误。
+     * @param error 错误类型。
+     */
+    void onErrorOccurred(QModbusDevice::Error error)
+    {
+        // 处理连接过程中发生的错误
+        if (error != QModbusDevice::NoError)
+        {
             qWarning() << "Modbus error:" << m_modbusClient->errorString();
             emit connectionFailed(m_modbusClient->errorString());
         }
@@ -489,44 +661,78 @@ private:
     QModbusTcpClient *m_modbusClient;
 
 private:
-    int fieldLength(const CommunicationField &field) {
+    /**
+     * @brief 计算字段长度。
+     * @param field 通信字段。
+     * @return 字段长度。
+     */
+    int fieldLength(const CommunicationField &field)
+    {
         // 根据数据类型返回字段长度
-        if (field.datatype.toLower() == "int32" || field.datatype.toLower() == "float") {
-            return 2;  // 32位数据类型占用两个寄存器
-        } else {
-            return 1;  // 默认为16位数据类型，占用一个寄存器
+        if (field.datatype.toLower() == "int32" || field.datatype.toLower() == "float")
+        {
+            return 2; // 32位数据类型占用两个寄存器
+        }
+        else
+        {
+            return 1; // 默认为16位数据类型，占用一个寄存器
         }
     }
 
-    std::pair<int, int> determineReadRange(const QList<CommunicationField> &fields) {
+    /**
+     * @brief 确定读取范围。
+     * @param fields 通信字段列表。
+     * @return 读取范围的起始和结束地址。
+     */
+    std::pair<int, int> determineReadRange(const QList<CommunicationField> &fields)
+    {
         int startAddress = std::numeric_limits<int>::max();
         int endAddress = 0;
-        for (const auto &field : fields) {
+        for (const auto &field : fields)
+        {
             startAddress = std::min(startAddress, static_cast<int>(field.startAddress));
             endAddress = std::max(endAddress, static_cast<int>(field.startAddress + field.length));
         }
         return {startAddress, endAddress};
     }
 
+    /**
+     * @brief 处理 Modbus 回复。
+     * @param reply Modbus 回复。
+     * @param fields 通信字段列表。
+     * @param startAddress 读取范围的起始地址。
+     * @param callback 回调函数。
+     */
     void handleReply(QModbusReply *reply,
                      const QList<CommunicationField> &fields,
                      int startAddress,
-                     std::function<void(bool, QList<QVariant>)> callback) {
-        if (reply->error() != QModbusDevice::NoError) {
+                     std::function<void(bool, QList<QVariant>)> callback)
+    {
+        if (reply->error() != QModbusDevice::NoError)
+        {
             callback(false, QList<QVariant>{});
             return;
         }
 
         const QModbusDataUnit unit = reply->result();
-         QList<QVariant> values;
-        for (auto &field : fields) {
-          auto value = parseFieldData(unit, field, startAddress);
-          values.append(value);
+        QList<QVariant> values;
+        for (auto &field : fields)
+        {
+            auto value = parseFieldData(unit, field, startAddress);
+            values.append(value);
         }
         callback(true, values);
     }
 
-    QVariant parseFieldData(const QModbusDataUnit &unit, const CommunicationField &field, int startAddress) {
+    /**
+     * @brief 解析字段数据。
+     * @param unit Modbus 数据单元。
+     * @param field 通信字段。
+     * @param startAddress 读取范围的起始地址。
+     * @return 解析后的字段数据。
+     */
+    QVariant parseFieldData(const QModbusDataUnit &unit, const CommunicationField &field, int startAddress)
+    {
         // 计算字段在 Modbus 回复中的起始位置
         int fieldIndex = field.startAddress - startAddress;
 
@@ -534,21 +740,26 @@ private:
         QVariant reValue;
 
         // 根据数据类型解析数据
-        if (field.datatype.toLower() == "int32") {
+        if (field.datatype.toLower() == "int32")
+        {
             quint32 wordC = static_cast<quint32>(unit.value(fieldIndex));
             quint32 wordD = static_cast<quint32>(unit.value(fieldIndex + 1));
-            quint32 combinedValue = (wordD << 16) | wordC;  // CDAB to ABCD
+            quint32 combinedValue = (wordD << 16) | wordC; // CDAB to ABCD
             reValue = QVariant::fromValue(static_cast<qint32>(combinedValue));
-        }else if (field.datatype.toLower() == "float") {
+        }
+        else if (field.datatype.toLower() == "float")
+        {
             quint32 wordC = static_cast<quint32>(unit.value(fieldIndex));
             quint32 wordD = static_cast<quint32>(unit.value(fieldIndex + 1));
-            quint32 combinedValue = (wordD << 16) | wordC;  // CDAB to ABCD
+            quint32 combinedValue = (wordD << 16) | wordC; // CDAB to ABCD
             float value;
             memcpy(&value, &combinedValue, sizeof(float));
             reValue = QVariant::fromValue(value);
-        } else if (field.datatype.toLower() == "int16") {
-                int16_t value = static_cast<int16_t>(unit.value(fieldIndex));
-                reValue = QVariant::fromValue(value);
+        }
+        else if (field.datatype.toLower() == "int16")
+        {
+            int16_t value = static_cast<int16_t>(unit.value(fieldIndex));
+            reValue = QVariant::fromValue(value);
         }
 
         return reValue;
@@ -556,4 +767,3 @@ private:
 };
 
 #endif // MODBUSCLIENT_H
-
